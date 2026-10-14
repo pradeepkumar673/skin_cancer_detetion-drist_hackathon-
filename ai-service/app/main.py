@@ -5,14 +5,15 @@ and standard JSON error handling.
 """
 
 import importlib.metadata
+from io import BytesIO
+import json
+from pathlib import Path
 import platform
 import time
+from typing import Any, Dict, List, Optional
 import uuid
-from pathlib import Path
-from typing import Any, Dict, Optional
 
-from io import BytesIO
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from PIL import Image
@@ -21,7 +22,14 @@ import structlog
 
 from app.config import Settings, get_settings
 from app.pipeline.quality import assess_quality
-from app.schemas import ErrorResponse, HealthResponse, ModelStatus, QualityResult
+from app.schemas import (
+    AnalysisResponse,
+    ErrorResponse,
+    HealthResponse,
+    ModelStatus,
+    PatientContext,
+    QualityResult,
+)
 
 # Configure structured JSON logging
 structlog.configure(
@@ -218,16 +226,101 @@ async def check_image_quality(
 
 @app.post(
     "/v1/analyze",
+    response_model=AnalysisResponse,
     summary="Analyze lesion or wound image",
     dependencies=[Depends(verify_api_key)],
     responses={
-        503: {"model": ErrorResponse, "description": "Models are not loaded yet"}
+        413: {"model": ErrorResponse, "description": "File size exceeds limit"},
+        415: {"model": ErrorResponse, "description": "Unsupported media type"},
+        422: {"model": ErrorResponse, "description": "Invalid input parameters"},
     },
 )
-async def analyze_image(request: Request):
-    """Pipeline endpoint. Returns HTTP 503 until models are loaded in Step 15."""
-    request_id = getattr(request.state, "request_id", None)
-    raise HTTPException(
-        status_code=503,
-        detail={"error": "models_not_loaded", "message": "Models are not loaded yet."},
-    )
+async def analyze_image_endpoint(
+    request: Request,
+    image: UploadFile = File(..., description="Primary clinical lesion or wound image"),
+    prior_image: Optional[UploadFile] = File(None, description="Prior image of the same lesion"),
+    other_lesion_images: Optional[List[UploadFile]] = File(None, description="Other lesions of the same patient"),
+    patient_context: Optional[str] = Form(None, description="JSON string of PatientContext metadata"),
+    language: str = "en",
+):
+    """Execute complete 12-model clinical screening pipeline."""
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+
+    allowed_types = ["image/jpeg", "image/png", "image/webp"]
+    max_bytes = 10 * 1024 * 1024  # 10 MB limit
+
+    # Validate primary image content type
+    if image.content_type and image.content_type.lower() not in allowed_types:
+        raise HTTPException(
+            status_code=415,
+            detail={"error": "unsupported_media_type", "message": f"Unsupported media type: {image.content_type}. Expected JPEG or PNG."},
+        )
+
+    # Read and validate primary image size
+    img_bytes = await image.read()
+    if len(img_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail={"error": "payload_too_large", "message": "Image size exceeds 10MB limit."},
+        )
+
+    try:
+        pil_image = Image.open(BytesIO(img_bytes)).convert("RGB")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_image", "message": f"Failed to parse image file: {str(e)}"},
+        )
+
+    # Parse prior image if supplied
+    pil_prior = None
+    if prior_image is not None and prior_image.filename:
+        prior_bytes = await prior_image.read()
+        if len(prior_bytes) > max_bytes:
+            raise HTTPException(status_code=413, detail={"error": "payload_too_large", "message": "Prior image exceeds 10MB limit."})
+        try:
+            pil_prior = Image.open(BytesIO(prior_bytes)).convert("RGB")
+        except Exception:
+            pil_prior = None
+
+    # Parse other lesions if supplied
+    other_pils: List[Image.Image] = []
+    if other_lesion_images:
+        for oth_file in other_lesion_images:
+            if oth_file and oth_file.filename:
+                oth_bytes = await oth_file.read()
+                try:
+                    other_pils.append(Image.open(BytesIO(oth_bytes)).convert("RGB"))
+                except Exception:
+                    pass
+
+    # Parse patient context JSON
+    context_obj = None
+    if patient_context:
+        try:
+            ctx_data = json.loads(patient_context)
+            context_obj = PatientContext(**ctx_data)
+        except Exception as e:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "validation_error", "message": f"Invalid patient_context JSON: {str(e)}"},
+            )
+
+    from app.pipeline.orchestrator import run_pipeline
+
+    try:
+        response = run_pipeline(
+            image=pil_image,
+            prior_image=pil_prior,
+            other_lesion_images=other_pils if other_pils else None,
+            patient_context=context_obj,
+            request_id=request_id,
+            language=language,
+        )
+        return response
+    except Exception as e:
+        logger.error("pipeline_execution_error", request_id=request_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "pipeline_error", "message": f"Clinical screening pipeline error: {str(e)}"},
+        )

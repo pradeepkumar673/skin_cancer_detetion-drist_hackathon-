@@ -53,13 +53,38 @@ def test_analyze_with_wrong_key():
     assert "request_id" in data
 
 
-def test_analyze_with_valid_key():
-    """Verify /v1/analyze returns HTTP 503 models_not_loaded when authorized."""
+def test_analyze_with_valid_key_missing_params():
+    """Verify /v1/analyze returns HTTP 422 when required image file is missing."""
     response = client.post(
         "/v1/analyze", headers={"X-API-Key": settings.AI_SERVICE_API_KEY}
     )
-    assert response.status_code == 503
-
+    assert response.status_code == 422
     data = response.json()
-    assert data["error"] == "models_not_loaded"
+    assert data["error"] == "validation_error"
     assert "request_id" in data
+
+
+def test_analyze_with_valid_key():
+    """Verify /v1/analyze returns HTTP 200 and valid schema when supplied with a sharp test image."""
+    from io import BytesIO
+    from PIL import Image
+
+    # Create sharp test image
+    img = Image.new("RGB", (256, 256), color=(180, 130, 110))
+    buf = BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+
+    response = client.post(
+        "/v1/analyze",
+        headers={"X-API-Key": settings.AI_SERVICE_API_KEY},
+        files={"image": ("lesion.jpg", buf, "image/jpeg")},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "request_id" in data
+    assert "quality" in data
+    assert "nurses" in data
+    assert "teams" in data
+    assert "safety" in data
+    assert "arbitration" in data
