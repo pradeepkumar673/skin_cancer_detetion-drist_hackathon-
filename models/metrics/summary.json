@@ -1,0 +1,556 @@
+{
+  "generated_at": "2026-10-14T18:33:26.648919+00:00",
+  "git_commit": "5e8456ac8300eb99299871881b87713570a7bda1",
+  "datasets": [
+    {
+      "name": "HAM10000 (Human Against Machine)",
+      "source": "ISIC Archive / Tschandl et al.",
+      "license": "CC BY-NC 4.0",
+      "size": "10,015 dermoscopic images",
+      "split_strategy": "Patient-stratified train/val/test (80/10/10)",
+      "known_bias": "Overwhelmingly lighter skin (Fitzpatrick I-III). Dermoscopic, not smartphone."
+    },
+    {
+      "name": "DermNet New Zealand Clinical Atlas",
+      "source": "DermNet NZ",
+      "license": "Educational fair use",
+      "size": "23 superclasses across ~16k clinical photos",
+      "split_strategy": "Class-balanced held-out evaluation",
+      "known_bias": "Clinically framed photos with mixed illumination."
+    },
+    {
+      "name": "FUSeg (Foot Ulcer Segmentation)",
+      "source": "FUSeg Challenge 2021",
+      "license": "Academic use",
+      "size": "1,210 wound photos with expert masks",
+      "split_strategy": "Grouped lesion partitioning",
+      "known_bias": "Some patient overlap between images."
+    },
+    {
+      "name": "DINOv2 Foundation ViT",
+      "source": "Meta AI (Oquab et al., 2023)",
+      "license": "Apache 2.0",
+      "size": "Pre-trained on LVD-142M",
+      "known_bias": "General-purpose, not medical."
+    }
+  ],
+  "models": {
+    "cancer_classifier": {
+      "model_name": "Cancer Junior A (7-class HAM10000 Lesion Classifier)",
+      "source": "calibrated_reference_embeddings (n=420, seed=42)",
+      "evaluated_at": "2026-10-14T11:43:18.721517+00:00",
+      "hyperparameters": {
+        "best_c": 0.01,
+        "temperature": 0.05,
+        "class_weight": "balanced",
+        "solver": "lbfgs"
+      },
+      "test_metrics": {
+        "balanced_accuracy": 0.3894,
+        "macro_f1": 0.3934,
+        "top2_accuracy": 0.619,
+        "expected_calibration_error_ece": 0.251
+      },
+      "malignant_premalignant_recall": {
+        "melanoma_mel_recall": 0.125,
+        "basal_cell_carcinoma_bcc_recall": 0.5455,
+        "actinic_keratoses_akiec_recall": 0.2857
+      },
+      "per_class": {
+        "akiec": {
+          "recall": 0.2857,
+          "precision": 0.3333,
+          "is_malignant_or_premalignant": true
+        },
+        "bcc": {
+          "recall": 0.5455,
+          "precision": 0.4615,
+          "is_malignant_or_premalignant": true
+        },
+        "bkl": {
+          "recall": 0.4615,
+          "precision": 0.6667,
+          "is_malignant_or_premalignant": false
+        },
+        "df": {
+          "recall": 0.3333,
+          "precision": 0.2,
+          "is_malignant_or_premalignant": false
+        },
+        "mel": {
+          "recall": 0.125,
+          "precision": 0.1111,
+          "is_malignant_or_premalignant": true
+        },
+        "nv": {
+          "recall": 0.375,
+          "precision": 0.6,
+          "is_malignant_or_premalignant": false
+        },
+        "vasc": {
+          "recall": 0.6,
+          "precision": 0.5455,
+          "is_malignant_or_premalignant": false
+        }
+      },
+      "confusion_matrix": [
+        [
+          2,
+          1,
+          0,
+          1,
+          2,
+          0,
+          1
+        ],
+        [
+          1,
+          6,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          6,
+          3,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          2,
+          0,
+          1
+        ],
+        [
+          2,
+          2,
+          2,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          2,
+          3,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          1,
+          1,
+          6
+        ]
+      ],
+      "classes": [
+        "akiec",
+        "bcc",
+        "bkl",
+        "df",
+        "mel",
+        "nv",
+        "vasc"
+      ],
+      "verdict": "NOT SAFE for clinical use. Held-out melanoma recall is 12.5%; the model misses most melanomas. This is a research prototype and must not be relied on for triage."
+    },
+    "cancer_segmentation": {
+      "evaluated_at": "2026-10-14T11:43:18.721517+00:00",
+      "status": "not quantitatively evaluated - visual QA and morphology verification only",
+      "method": "Central Otsu contrast initializer with morphological hole-filling and largest-component extraction",
+      "qa_notes": "ISIC 2018 Task 1 ground-truth masks not present; visual inspection verified on synthetic and reference lesions",
+      "verdict": "See metrics. Interpret with the dataset limitations in mind."
+    },
+    "cancer_senior": {
+      "model_name": "Cancer Senior (Calibrated Risk Estimator with Bootstrap Uncertainty)",
+      "evaluated_at": "2026-10-14T12:05:48.904664+00:00",
+      "test_metrics": {
+        "auroc": 1.0,
+        "auprc": 1.0,
+        "brier_score": 0.0,
+        "expected_calibration_error_ece": 0.0,
+        "sensitivity_at_90_specificity": 1.0
+      },
+      "features": [
+        "prob_akiec",
+        "prob_bcc",
+        "prob_bkl",
+        "prob_df",
+        "prob_mel",
+        "prob_nv",
+        "prob_vasc",
+        "asymmetry",
+        "border",
+        "color",
+        "diameter_px",
+        "age",
+        "sex_male"
+      ],
+      "risk_bands": {
+        "low": 0.15,
+        "moderate": 0.45,
+        "high": 0.75,
+        "very_high": 1.0
+      },
+      "urgency_mapping": {
+        "low": "monitor",
+        "moderate": "routine_visit",
+        "high": "urgent_visit",
+        "very_high": "urgent_visit"
+      },
+      "leakage_warning": "cancer_senior: metrics look like leakage -> auroc=1.0000, auprc=1.0000. Confirm the test split is truly held out, that no reference embeddings were built on test rows, and that the model was trained on train only.",
+      "verdict": "Research-grade risk estimator. Trained on out-of-fold probabilities from the junior classifier. Interpret alongside the junior model's known weaknesses."
+    },
+    "disease": {
+      "model_name": "Disease Junior A (6-class DermNet Classifier with Calibrated Abstention)",
+      "source": "calibrated_reference_embeddings (n=360, seed=42)",
+      "evaluated_at": "2026-10-14T11:55:43.889770+00:00",
+      "hyperparameters": {
+        "best_c": 0.01,
+        "temperature": 0.2,
+        "abstain_threshold": 0.4,
+        "class_weight": "balanced",
+        "solver": "lbfgs"
+      },
+      "test_metrics": {
+        "top1_accuracy": 1.0,
+        "top3_accuracy": 1.0,
+        "macro_f1": 1.0,
+        "expected_calibration_error_ece": 0.0002,
+        "test_coverage_at_abstain_threshold": 1.0,
+        "selective_accuracy": 1.0
+      },
+      "selective_prediction_curve": [
+        {
+          "threshold": 0.25,
+          "coverage": 1.0,
+          "selective_accuracy": 1.0
+        },
+        {
+          "threshold": 0.3,
+          "coverage": 1.0,
+          "selective_accuracy": 1.0
+        },
+        {
+          "threshold": 0.35,
+          "coverage": 1.0,
+          "selective_accuracy": 1.0
+        },
+        {
+          "threshold": 0.4,
+          "coverage": 1.0,
+          "selective_accuracy": 1.0
+        },
+        {
+          "threshold": 0.45,
+          "coverage": 1.0,
+          "selective_accuracy": 1.0
+        },
+        {
+          "threshold": 0.5,
+          "coverage": 1.0,
+          "selective_accuracy": 1.0
+        }
+      ],
+      "per_class": {
+        "eczema": {
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "psoriasis": {
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "tinea_ringworm": {
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "acne_vulgaris": {
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "rosacea": {
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "vitiligo": {
+          "recall": 1.0,
+          "precision": 1.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          6,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          14,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          6,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          9,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          15,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          5
+        ]
+      ],
+      "classes": [
+        "eczema",
+        "psoriasis",
+        "tinea_ringworm",
+        "acne_vulgaris",
+        "rosacea",
+        "vitiligo"
+      ],
+      "leakage_warning": "disease: metrics look like leakage -> macro_f1=1.0000, top1_accuracy=1.0000, top3_accuracy=1.0000, selective_accuracy=1.0000. Confirm the test split is truly held out, that no reference embeddings were built on test rows, and that the model was trained on train only.",
+      "verdict": "Demo-grade. 6-class classifier evaluated on a small reference set. Uses smartphone-style images, so it is closer to real use than the cancer model, but the class list is not clinically complete."
+    },
+    "nurses": {
+      "evaluated_at": "2026-10-14T11:33:12.486649+00:00",
+      "nurses": {
+        "cancer": {
+          "best_c": 0.01,
+          "decision_threshold": 0.6,
+          "auroc": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "accuracy": 1.0,
+          "confusion_matrix": [
+            [
+              69,
+              0
+            ],
+            [
+              0,
+              23
+            ]
+          ]
+        },
+        "ulcer": {
+          "best_c": 0.01,
+          "decision_threshold": 0.6,
+          "auroc": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "accuracy": 1.0,
+          "confusion_matrix": [
+            [
+              69,
+              0
+            ],
+            [
+              0,
+              23
+            ]
+          ]
+        },
+        "disease": {
+          "best_c": 0.01,
+          "decision_threshold": 0.6,
+          "auroc": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "accuracy": 1.0,
+          "confusion_matrix": [
+            [
+              69,
+              0
+            ],
+            [
+              0,
+              23
+            ]
+          ]
+        }
+      },
+      "ood_threshold": 54.19,
+      "cross_domain_evaluation": {
+        "cancer": {
+          "total_samples": 23,
+          "nurses_fired": {
+            "cancer": 23,
+            "ulcer": 0,
+            "disease": 0
+          }
+        },
+        "ulcer": {
+          "total_samples": 23,
+          "nurses_fired": {
+            "cancer": 0,
+            "ulcer": 23,
+            "disease": 0
+          }
+        },
+        "disease": {
+          "total_samples": 23,
+          "nurses_fired": {
+            "cancer": 0,
+            "ulcer": 0,
+            "disease": 23
+          }
+        },
+        "none": {
+          "total_samples": 23,
+          "nurses_fired": {
+            "cancer": 0,
+            "ulcer": 0,
+            "disease": 0
+          }
+        }
+      },
+      "verdict": "Gatekeepers. Each nurse is a calibrated one-vs-rest classifier plus a Mahalanobis OOD score. If all three say no, the case is refused rather than guessed."
+    },
+    "quality_gate": {
+      "evaluated_at": "2026-10-14T11:20:03.936153+00:00",
+      "sample_source": "dermatological_reference_calibration_set (n=200)",
+      "clean_samples": 200,
+      "false_reject_rate_pct": 9.5,
+      "overall_detection_rate_pct": 100.0,
+      "results_by_degradation_type": {
+        "blur_strong": {
+          "tested": 200,
+          "detected": 200,
+          "detection_rate_pct": 100.0
+        },
+        "blur_medium": {
+          "tested": 200,
+          "detected": 200,
+          "detection_rate_pct": 100.0
+        },
+        "too_dark": {
+          "tested": 200,
+          "detected": 200,
+          "detection_rate_pct": 100.0
+        },
+        "too_bright": {
+          "tested": 200,
+          "detected": 200,
+          "detection_rate_pct": 100.0
+        },
+        "low_contrast": {
+          "tested": 200,
+          "detected": 200,
+          "detection_rate_pct": 100.0
+        },
+        "low_resolution": {
+          "tested": 200,
+          "detected": 200,
+          "detection_rate_pct": 100.0
+        }
+      },
+      "thresholds": {
+        "min_blur_laplacian_var": 50.0,
+        "min_brightness_v": 35.0,
+        "max_brightness_v": 230.0,
+        "min_contrast_std": 18.2,
+        "min_width": 200,
+        "min_height": 200,
+        "fixed_resize_long_side": 512
+      },
+      "verdict": "Rule-based (OpenCV). Rejects blur, darkness, low contrast, and low resolution. Thresholds were tuned on degraded copies of real images."
+    },
+    "ulcer_segmentation": {
+      "model_name": "Ulcer Junior A (ResNet-34 U-Net Wound Segmenter)",
+      "source": "ImageNet pretrained ResNet-34 U-Net (smp) with reference wound calibration",
+      "evaluated_at": "2026-10-14T11:50:02.653182+00:00",
+      "architecture": {
+        "model": "U-Net",
+        "encoder": "resnet34",
+        "in_channels": 3,
+        "classes": 1
+      },
+      "test_metrics": {
+        "dice": 0.5082,
+        "iou": 0.3407,
+        "precision": 0.9978,
+        "recall": 0.3409
+      },
+      "tissue_classification": {
+        "status": "color-based estimates, not clinically validated",
+        "method": "CIE Lab and HSV heuristic rules from clinical_rules.yaml",
+        "categories": [
+          "granulation",
+          "slough",
+          "necrotic",
+          "other"
+        ]
+      },
+      "notes": "Decision-support wound segmentation. In accordance with Rule 11A, tissue fractions are flagged as heuristic estimates.",
+      "verdict": "Wound area only. Dice=0.51 on FUSeg. Useful for tracking change over time. It does not classify the wound and cannot sense depth or undermining."
+    }
+  },
+  "limitations": [
+    {
+      "topic": "Not a medical device",
+      "description": "SkinSentry is decision support. A low-risk result never proves there is no problem. A clinician makes the diagnosis."
+    },
+    {
+      "topic": "Dermoscopy vs smartphone",
+      "description": "The cancer model was trained on dermoscopic images. Smartphone photos without clinical illumination are systematically harder."
+    },
+    {
+      "topic": "Skin tone representation",
+      "description": "HAM10000 has historical under-representation of Fitzpatrick V-VI. Calibration on darker skin is weaker and explicitly flagged in the safety layer."
+    },
+    {
+      "topic": "2D wound photography",
+      "description": "Wound area from a 2D photo cannot recover tissue depth or undermining. A probe exam is always required."
+    },
+    {
+      "topic": "Multilingual explanation",
+      "description": "Tamil and Hindi output is generated from structured terminology maps and requires a native clinician's review before any clinical pilot."
+    }
+  ]
+}

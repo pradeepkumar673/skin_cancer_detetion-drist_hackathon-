@@ -5,6 +5,7 @@ import { runExpiryCheck } from '../services/cron.js';
 import { runAppointmentReminders } from './appointmentReminders.js';
 import { runFollowUpReminders } from './followUpReminders.js';
 import { runRetentionCleanup } from './retentionCleanup.js';
+import { runAccountDeletion } from './accountDeletion.js';
 
 const scheduledTasks = [];
 
@@ -20,6 +21,8 @@ export const JOBS_REGISTRY = {
   followUpReminders: runFollowUpReminders,
   retention_cleanup: runRetentionCleanup,
   retentionCleanup: runRetentionCleanup,
+  account_deletion: runAccountDeletion,
+  accountDeletion: runAccountDeletion,
 };
 
 /**

@@ -21,6 +21,9 @@ export function publicUser(user) {
     phone: user.phone || null,
     languagePref: user.languagePref,
     isActive: user.isActive,
+    termsVersionAccepted: user.termsVersionAccepted || null,
+    termsAcceptedAt: user.termsAcceptedAt || null,
+    deletionRequestedAt: user.deletionRequestedAt || null,
   };
 }
 

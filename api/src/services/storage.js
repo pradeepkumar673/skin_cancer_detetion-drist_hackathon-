@@ -10,6 +10,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const BASE_STORAGE_DIR = path.resolve(__dirname, '../../', config.STORAGE_DIR || '../storage');
+const STORAGE_ROOT = BASE_STORAGE_DIR;
+
+/**
+ * Join and validate that the resolved path stays under STORAGE_ROOT.
+ * Throws on any path traversal attempt.
+ */
+export function safeJoin(...parts) {
+  const resolved = path.resolve(STORAGE_ROOT, ...parts);
+  const rel = path.relative(STORAGE_ROOT, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('path traversal blocked');
+  }
+  return resolved;
+}
 
 /**
  * Asserts that a target path does not escape the base directory (path traversal defense).
@@ -21,6 +35,44 @@ export function resolveSafePath(baseDir, ...subPaths) {
     throw new Error('Path traversal attempt detected');
   }
   return resolved;
+}
+
+/**
+ * Prepare a per-case directory. Layout:
+ *   storage/patients/<patientId>/<caseId>/
+ */
+export async function ensureCaseDir(patientId, caseId) {
+  const dir = safeJoin('patients', String(patientId), String(caseId));
+  await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
+
+/**
+ * Persist an uploaded image. Returns the relative path used by the API.
+ * Filenames are content-hashed so re-uploads dedupe automatically.
+ */
+export async function saveImage(patientId, caseId, buffer, ext = 'jpg') {
+  const dir = await ensureCaseDir(patientId, caseId);
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  const filename = `${hash}.${ext}`;
+  const absolute = path.join(dir, filename);
+  try {
+    await fs.promises.writeFile(absolute, buffer, { flag: 'wx', mode: 0o600 });
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+  }
+  return path
+    .relative(STORAGE_ROOT, absolute)
+    .split(path.sep)
+    .join('/');
+}
+
+/**
+ * Resolve a stored relative path back to an absolute path.
+ * Always use this before reading from disk.
+ */
+export function resolveStored(relativePath) {
+  return safeJoin(...relativePath.split('/'));
 }
 
 /**
@@ -89,7 +141,6 @@ export async function saveCaseImage(patientId, caseId, sha256, buffer) {
  * Stores an analysis artifact (e.g. heatmap PNG, overlay PNG) on disk.
  */
 export async function saveCaseArtifact(patientId, caseId, artifactName, buffer) {
-  // Sanitize artifactName (e.g. "overlay.png")
   const sanitizedName = path.basename(artifactName);
   const caseDir = resolveSafePath(BASE_STORAGE_DIR, 'patients', String(patientId), String(caseId));
   await fs.promises.mkdir(caseDir, { recursive: true });
@@ -122,7 +173,7 @@ export async function deleteCaseStorage(patientId, caseId) {
     if (fs.existsSync(caseDir)) {
       await fs.promises.rm(caseDir, { recursive: true, force: true });
     }
-  } catch (err) {
+  } catch {
     // Ignore if already deleted
   }
 }

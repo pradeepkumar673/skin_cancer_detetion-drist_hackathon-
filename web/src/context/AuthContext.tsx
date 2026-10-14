@@ -31,6 +31,8 @@ export interface UserProfile {
   languagePref?: string;
   isActive: boolean;
   verificationStatus?: string;
+  deletionRequestedAt?: string | null;
+  termsVersionAccepted?: string | null;
   patient?: PatientProfile;
   doctor?: DoctorProfile;
 }
@@ -42,6 +44,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<UserProfile>;
   register: (payload: Record<string, unknown>) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,45 +53,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const refreshUser = async () => {
+    try {
+      const data = await apiClient<{
+        accessToken: string;
+        user: UserProfile;
+        verificationStatus?: string;
+      }>("/auth/refresh", {
+        method: "POST",
+        skipAuth: true,
+      });
+
+      if (data?.accessToken && data?.user) {
+        setAccessToken(data.accessToken);
+        setUser({
+          ...data.user,
+          verificationStatus: data.verificationStatus,
+        });
+      }
+    } catch {
+      setAccessToken(null);
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Attempt silent refresh on initial mount
   useEffect(() => {
-    let mounted = true;
-
-    async function restoreSession() {
-      try {
-        const data = await apiClient<{
-          accessToken: string;
-          user: UserProfile;
-          verificationStatus?: string;
-        }>("/auth/refresh", {
-          method: "POST",
-          skipAuth: true,
-        });
-
-        if (mounted && data?.accessToken && data?.user) {
-          setAccessToken(data.accessToken);
-          setUser({
-            ...data.user,
-            verificationStatus: data.verificationStatus,
-          });
-        }
-      } catch {
-        if (mounted) {
-          setAccessToken(null);
-          setUser(null);
-        }
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    restoreSession();
-
-    return () => {
-      mounted = false;
-    };
+    refreshUser();
   }, []);
 
   const login = async (email: string, password: string): Promise<UserProfile> => {
@@ -142,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        refreshUser,
       }}
     >
       {children}

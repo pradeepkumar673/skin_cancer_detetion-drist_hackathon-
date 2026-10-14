@@ -66,7 +66,7 @@ export function Footer() {
             <Link href="/terms" className="hover:text-[#2B7A78] underline">
               Terms of Service
             </Link>
-            <Link href="/models" className="hover:text-[#2B7A78] underline">
+            <Link href="/performance" className="hover:text-[#2B7A78] underline">
               Model Performance
             </Link>
           </div>

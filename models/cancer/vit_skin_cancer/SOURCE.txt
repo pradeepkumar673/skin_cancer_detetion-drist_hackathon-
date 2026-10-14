@@ -1,0 +1,8 @@
+id: cancer_classifier
+repo: Miguel764/efficientnetv2s-skin-cancer-classifier
+url: https://huggingface.co/Miguel764/efficientnetv2s-skin-cancer-classifier
+role: Cancer junior classifier, 7 HAM10000 classes
+licence: MIT (check model card)
+local_path: models/cancer/vit_skin_cancer
+downloaded: 2026-10-14
+note: Pretrained checkpoint. Metrics on the model card are not our held-out test results.

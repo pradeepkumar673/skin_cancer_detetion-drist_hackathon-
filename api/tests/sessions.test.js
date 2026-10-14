@@ -278,6 +278,7 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
       const clientSocket = Client(`http://127.0.0.1:${serverPort}`, {
         auth: { token: outsiderToken },
         transports: ['websocket'],
+        forceNew: true,
       });
 
       await new Promise((resolve, reject) => {
@@ -298,6 +299,7 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
       const appointment = await Appointment.create({
         patientId: patientDoc._id,
         doctorId: doctorDoc._id,
+        kind: 'scheduled',
         mode: 'video',
         status: 'paid',
         scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow (outside grace window)
@@ -307,6 +309,7 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
       const clientSocket = Client(`http://127.0.0.1:${serverPort}`, {
         auth: { token: patientToken },
         transports: ['websocket'],
+        forceNew: true,
       });
 
       await new Promise((resolve, reject) => {
@@ -337,6 +340,7 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
       const patientSocket = Client(`http://127.0.0.1:${serverPort}`, {
         auth: { token: patientToken },
         transports: ['websocket'],
+        forceNew: true,
       });
       await new Promise((resolve, reject) => {
         patientSocket.on('connect', resolve);
@@ -347,6 +351,7 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
       const doctorSocket = Client(`http://127.0.0.1:${serverPort}`, {
         auth: { token: doctorToken },
         transports: ['websocket'],
+        forceNew: true,
       });
       await new Promise((resolve, reject) => {
         doctorSocket.on('connect', resolve);
@@ -416,6 +421,7 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
       const doctorSocket = Client(`http://127.0.0.1:${serverPort}`, {
         auth: { token: doctorToken },
         transports: ['websocket'],
+        forceNew: true,
       });
       await new Promise((resolve, reject) => {
         doctorSocket.on('connect', resolve);

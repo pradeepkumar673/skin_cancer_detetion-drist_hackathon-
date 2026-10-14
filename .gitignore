@@ -1,28 +1,62 @@
-node_modules/
-.venv/
-__pycache__/
-.next/
-dist/
-coverage/
-playwright-report/
-
+# --- secrets ---
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+secrets/
 
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- node ---
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+.vite/
+coverage/
+npm-debug.log*
+playwright-report/
+
+# --- ML artifacts (weights + HF caches) ---
 data/
-storage/
-
-models/*
+!data/.gitkeep
+models/**/.cache/
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.h5
+models/**/*.pt
+models/**/*.joblib
+models/**/*.pkl
 !models/MANIFEST.json
 !models/metrics/
+!models/metrics/**
+!models/**/SOURCE.txt
+!models/**/config.json
+!models/**/preprocessor_config.json
+!models/**/README.md
+!models/**/.gitattributes
 
-*.pt
-*.pth
-*.joblib
-*.npy
-*.zip
+# --- user data ---
+storage/
+!storage/.gitkeep
 
+# --- OS / editors ---
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
 full_codebase_with_env.md
-.vite/
+repomix-output.md

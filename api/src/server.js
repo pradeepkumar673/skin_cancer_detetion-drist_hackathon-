@@ -23,12 +23,35 @@ import appointmentsRoutes from './routes/appointments.js';
 import consentsRoutes from './routes/consents.js';
 import paymentsRoutes from './routes/payments.js';
 import rtcRoutes from './routes/rtc.js';
+import meRoutes from './routes/me.js';
+import metricsRoutes from './routes/metrics.js';
 import { initSocket, resetDoctorPresence } from './services/socket.js';
 import { verifyMailer, getMailStatus } from './services/mailer.js';
+import fs from 'fs';
 import { startAllJobs, stopAllJobs } from './jobs/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function ensureStorageRoot() {
+  const root = path.resolve(__dirname, '../../', config.STORAGE_DIR || '../storage');
+  fs.mkdirSync(root, { recursive: true });
+  try {
+    fs.chmodSync(root, 0o700);
+  } catch {
+    // Windows no-op
+  }
+  const sentinel = path.join(root, '.gitignore');
+  if (!fs.existsSync(sentinel)) {
+    fs.writeFileSync(sentinel, '*\n!.gitignore\n');
+  }
+  return root;
+}
+
+const storageRoot = ensureStorageRoot();
+if (config.NODE_ENV !== 'test') {
+  logger.info({ storageRoot }, 'Storage root verified');
+}
 
 export const app = express();
 
@@ -82,6 +105,8 @@ app.use('/appointments', appointmentsRoutes);
 app.use('/consents', consentsRoutes);
 app.use('/payments', paymentsRoutes);
 app.use('/rtc', rtcRoutes);
+app.use('/me', meRoutes);
+app.use('/metrics', metricsRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {

@@ -12,11 +12,17 @@ export function Header() {
   const { user, isAuthenticated, logout } = useAuth();
 
   const isDoctor = user?.role === "doctor";
+  const isAdmin = user?.role === "admin";
 
   const navLinks = [
     { href: "/", label: "Overview" },
     ...(isAuthenticated
-      ? isDoctor
+      ? isAdmin
+        ? [
+            { href: "/admin", label: "Admin Console" },
+            { href: "/performance", label: "Model Metrics" },
+          ]
+        : isDoctor
         ? [
             { href: "/doctor/dashboard", label: "Dashboard" },
             { href: "/doctor/availability", label: "Schedule" },
@@ -30,7 +36,10 @@ export function Header() {
             { href: "/doctors", label: "Find Specialists" },
             { href: "/appointments", label: "Appointments" },
           ]
-      : [{ href: "/how-it-works", label: "How It Works" }]),
+      : [
+          { href: "/how-it-works", label: "How It Works" },
+          { href: "/performance", label: "Model Metrics" },
+        ]),
   ];
 
   return (

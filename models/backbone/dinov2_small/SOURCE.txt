@@ -1,0 +1,5 @@
+Model: facebook/dinov2-small
+Architecture: Vision Transformer (small, patch size 14)
+HuggingFace: https://huggingface.co/facebook/dinov2-small
+Embedding dimension: 384
+Downloaded: by scripts/download_backbone_model.py

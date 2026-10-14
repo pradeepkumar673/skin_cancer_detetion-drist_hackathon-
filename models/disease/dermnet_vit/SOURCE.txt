@@ -1,0 +1,8 @@
+id: disease_classifier
+repo: WahajRaza/finetuned-dermnet
+url: https://huggingface.co/WahajRaza/finetuned-dermnet
+role: Skin-disease classifier fine-tuned on DermNet images
+licence: Apache-2.0 (check model card)
+local_path: models/disease/dermnet_vit
+downloaded: 2026-10-14
+note: Pretrained checkpoint. Metrics on the model card are not our held-out test results.

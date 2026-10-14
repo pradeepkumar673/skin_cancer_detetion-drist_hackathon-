@@ -354,7 +354,21 @@ async def explain_endpoint(
         result=request.result,
         language=request.language,
     )
-    return explanation
+@app.get(
+    "/v1/metrics",
+    tags=["Metrics"],
+    summary="Get aggregated model evaluation metrics and provenance",
+)
+async def get_metrics() -> Dict[str, Any]:
+    """Return aggregated model evaluation metrics and provenance."""
+    summary_path = Path(__file__).resolve().parent.parent.parent / "models" / "metrics" / "summary.json"
+    if not summary_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": "Metrics summary not found. Run evaluate.py first."},
+        )
+    with open(summary_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 @app.on_event("startup")

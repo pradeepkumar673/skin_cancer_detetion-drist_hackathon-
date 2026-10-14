@@ -88,7 +88,7 @@ export async function canAccessSession(userId, appointmentId) {
   const graceMs = (config.SESSION_GRACE_MINUTES || 15) * 60 * 1000;
   const durationMs = (appointment.durationMin || 15) * 60 * 1000;
 
-  if (appointment.kind === 'scheduled') {
+  if (appointment.kind === 'scheduled' || appointment.scheduledAt) {
     if (!appointment.scheduledAt) {
       return { allowed: false, error: 'not_scheduled', message: 'Appointment is not scheduled yet' };
     }

@@ -11,8 +11,15 @@ const paymentSchema = new mongoose.Schema(
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Patient',
-      required: true,
+      required: false,
       index: true,
+    },
+    anonymized: {
+      type: Boolean,
+      default: false,
+    },
+    notes: {
+      type: mongoose.Schema.Types.Mixed,
     },
     razorpayOrderId: {
       type: String,

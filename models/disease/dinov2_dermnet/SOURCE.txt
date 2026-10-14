@@ -1,0 +1,5 @@
+Model: alxfgh/dinov2-base-finetuned-dermnet
+Architecture: DINOv2-base
+Trained on: DermNet (91 condition classes)
+HuggingFace: https://huggingface.co/alxfgh/dinov2-base-finetuned-dermnet
+Downloaded: by scripts/download_disease_model.py
