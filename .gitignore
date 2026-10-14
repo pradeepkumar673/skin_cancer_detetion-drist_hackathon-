@@ -25,3 +25,4 @@ models/*
 
 .DS_Store
 full_codebase_with_env.md
+.vite/

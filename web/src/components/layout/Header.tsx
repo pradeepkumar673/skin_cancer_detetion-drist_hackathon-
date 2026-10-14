@@ -11,14 +11,26 @@ export function Header() {
   const pathname = usePathname();
   const { user, isAuthenticated, logout } = useAuth();
 
+  const isDoctor = user?.role === "doctor";
+
   const navLinks = [
     { href: "/", label: "Overview" },
     ...(isAuthenticated
-      ? [
-          { href: "/cases", label: "My Cases" },
-          { href: "/cases/new", label: "New Screening" },
-        ]
-      : []),
+      ? isDoctor
+        ? [
+            { href: "/doctor/dashboard", label: "Dashboard" },
+            { href: "/doctor/availability", label: "Schedule" },
+            { href: "/doctor/fees", label: "Fees" },
+            { href: "/appointments", label: "Appointments" },
+            { href: "/cases", label: "Case Reviews" },
+          ]
+        : [
+            { href: "/cases", label: "My Cases" },
+            { href: "/cases/new", label: "New Screening" },
+            { href: "/doctors", label: "Find Specialists" },
+            { href: "/appointments", label: "Appointments" },
+          ]
+      : [{ href: "/how-it-works", label: "How It Works" }]),
   ];
 
   return (

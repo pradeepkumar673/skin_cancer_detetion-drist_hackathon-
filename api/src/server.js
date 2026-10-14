@@ -19,7 +19,7 @@ import adminRoutes from './routes/admin.js';
 import doctorRoutes from './routes/doctors.js';
 import configRoutes from './routes/config.js';
 import casesRoutes from './routes/cases.js';
-import { initSocket } from './services/socket.js';
+import { initSocket, resetDoctorPresence } from './services/socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -95,6 +95,7 @@ export async function startServer(port = config.PORT || 5000) {
 
     httpServer = http.createServer(app);
     initSocket(httpServer);
+    await resetDoctorPresence();
 
     serverInstance = httpServer.listen(port, () => {
       logger.info({ port, env: config.NODE_ENV }, `SkinSentry API server listening on port ${port}`);
