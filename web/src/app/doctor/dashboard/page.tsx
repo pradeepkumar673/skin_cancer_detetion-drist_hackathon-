@@ -4,32 +4,27 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Stethoscope,
-  Radio,
-  CircleOff,
-  Calendar,
-  Clock,
-  Coins,
-  AlertCircle,
-  ShieldAlert,
-  CheckCircle2,
+  Video,
+  Phone,
+  MessageSquare,
+  ExternalLink,
+  Shield,
+  Activity,
+  Sensors,
 } from "lucide-react";
+
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
+import { Spinner } from "@/components/ui/Spinner";
 import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
-import { Alert } from "@/components/ui/Alert";
-import { PermanentDisclaimer } from "@/components/ui/PermanentDisclaimer";
 
-interface DoctorDashboardData {
-  id: string;
-  name: string;
-  email: string;
-  specialty: string;
-  registrationNumber: string;
+interface DoctorData {
+  _id: string;
+  name?: string;
+  specialty?: string;
+  registrationNumber?: string;
   verificationStatus: string;
-  bio?: string | null;
   presenceMode: "auto" | "offline";
   isOnline: boolean;
   feesINR: {
@@ -37,30 +32,53 @@ interface DoctorDashboardData {
     audio: number;
     video: number;
   };
-  isVerified: boolean;
 }
 
 interface AppointmentItem {
   id: string;
-  patientName: string;
   mode: "chat" | "audio" | "video";
-  status: string;
+  kind: "instant" | "scheduled";
+  status: "requested" | "awaiting_payment" | "paid" | "in_progress" | "completed" | "cancelled";
   scheduledAt?: string;
-  requestedAt: string;
+  requestedAt?: string;
+  durationMin?: number;
   note?: string;
+  caseId?: {
+    _id: string;
+    lesionLabel?: string;
+    bodySite?: string;
+    status?: string;
+  } | null;
+  patient?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+}
+
+interface FeedbackCase {
+  _id: string;
+  bodySite: string;
+  lesionLabel?: string;
+  feedback: Array<{
+    decision: "accept" | "correct" | "reject";
+    notes?: string;
+    createdAt: string;
+  }>;
 }
 
 export default function DoctorDashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [doctorData, setDoctorData] = useState<DoctorDashboardData | null>(null);
-  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [presenceUpdating, setPresenceUpdating] = useState<boolean>(false);
-  const [presenceSuccess, setPresenceSuccess] = useState<string | null>(null);
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // Load doctor profile and appointments
+  const [doctor, setDoctor] = useState<DoctorData | null>(null);
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
+  const [recentFeedbacks, setRecentFeedbacks] = useState<FeedbackCase[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [presenceUpdating, setPresenceUpdating] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
@@ -68,57 +86,51 @@ export default function DoctorDashboardPage() {
       return;
     }
 
-    let mounted = true;
+    let active = true;
 
-    async function loadData() {
+    const run = async () => {
       try {
-        setIsLoading(true);
         setError(null);
+        const [docRes, apptRes] = await Promise.all([
+          apiClient<{ doctor: DoctorData }>("/doctors/me"),
+          apiClient<{ appointments: AppointmentItem[] }>("/appointments"),
+        ]);
 
-        // Fetch doctor profile
-        const docRes = await apiClient<{ doctor: DoctorDashboardData }>("/doctors/me");
-        if (mounted) {
-          setDoctorData(docRes.doctor);
-        }
+        if (!active) return;
+        setDoctor(docRes.doctor);
+        setAppointments(apptRes.appointments || []);
 
-        // Fetch appointments if doctor is verified
-        if (docRes.doctor.isVerified) {
-          try {
-            const apptRes = await apiClient<{ appointments: AppointmentItem[] }>("/appointments");
-            if (mounted) {
-              setAppointments(apptRes.appointments || []);
-            }
-          } catch {
-            if (mounted) setAppointments([]);
+        try {
+          const meRes = await apiClient<{ feedbackGiven?: FeedbackCase[] }>("/me");
+          if (!active) return;
+          if (meRes.feedbackGiven) {
+            setRecentFeedbacks(meRes.feedbackGiven.slice(0, 3));
           }
+        } catch {
+          // fallback
         }
       } catch (err) {
-        if (mounted) {
-          if (err instanceof ApiError && err.statusCode === 401) {
-            router.push("/login");
-            return;
-          }
-          // If 403 with doctor_not_verified, show awaiting screen
-          setError(err instanceof Error ? err.message : "Failed to load dashboard data");
+        if (!active) return;
+        if (err instanceof ApiError && err.statusCode === 401) {
+          router.push("/login");
+          return;
         }
+        setError(err instanceof Error ? err.message : "Failed to load doctor dashboard telemetry.");
       } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
+        if (active) setLoading(false);
       }
-    }
-
-    loadData();
-
-    return () => {
-      mounted = false;
     };
-  }, [authLoading, isAuthenticated, router]);
+
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [authLoading, isAuthenticated, router, refreshKey]);
 
   const handlePresenceToggle = async (mode: "auto" | "offline") => {
+    if (!doctor || presenceUpdating) return;
+    setPresenceUpdating(true);
     try {
-      setPresenceUpdating(true);
-      setPresenceSuccess(null);
       const res = await apiClient<{ presenceMode: "auto" | "offline"; isOnline: boolean }>(
         "/doctors/me/presence",
         {
@@ -126,282 +138,514 @@ export default function DoctorDashboardPage() {
           body: JSON.stringify({ mode }),
         }
       );
-
-      if (doctorData) {
-        setDoctorData({
-          ...doctorData,
-          presenceMode: res.presenceMode,
-          isOnline: res.isOnline,
-        });
-      }
-      setPresenceSuccess(`Presence mode updated to ${mode.toUpperCase()}.`);
+      setDoctor((prev) =>
+        prev
+          ? {
+              ...prev,
+              presenceMode: res.presenceMode,
+              isOnline: res.isOnline,
+            }
+          : null
+      );
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update presence mode");
+      const msg = err instanceof ApiError ? err.message : "Failed to toggle presence.";
+      alert(msg);
     } finally {
       setPresenceUpdating(false);
     }
   };
 
-  if (isLoading || authLoading) {
+  const handleAcceptAppointment = async (apptId: string) => {
+    try {
+      const now = new Date();
+      const nextSlot = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+      await apiClient(`/appointments/${apptId}/schedule`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          scheduledAt: nextSlot,
+          durationMin: 15,
+        }),
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Failed to accept appointment.";
+      alert(msg);
+    }
+  };
+
+  const handleDeclineAppointment = async (apptId: string) => {
+    try {
+      await apiClient(`/appointments/${apptId}/cancel`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          reason: "Clinician unavailable for this requested time window.",
+        }),
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Failed to cancel appointment.";
+      alert(msg);
+    }
+  };
+
+  if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
-        <Spinner size="lg" />
+      <div className="min-h-screen bg-[#FBFAF7] flex flex-col justify-between">
+        <Header />
+        <div className="py-24 flex flex-col items-center justify-center gap-3">
+          <Spinner size="lg" />
+          <p className="text-xs text-[#5A6B69] font-mono">
+            Loading clinical tele-dermatology enclave...
+          </p>
+        </div>
+        <Footer />
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  // 1. Unverified doctor screen
-  if (!doctorData || !doctorData.isVerified || user?.verificationStatus === "pending") {
-    return (
-      <div className="min-h-screen bg-[#FEFFFF] text-[#17252A]">
-        <PermanentDisclaimer />
-
-        <main className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
-          <Card className="border border-[#17252A]/20 bg-[#FEFFFF] shadow-none">
-            <CardHeader className="text-center pb-2">
-              <div className="w-12 h-12 rounded-[4px] bg-[#DEF2F1] text-[#2B7A78] flex items-center justify-center mx-auto mb-3">
-                <ShieldAlert className="h-6 w-6" />
-              </div>
-              <CardTitle className="text-xl font-bold text-[#17252A]">
-                Physician Credentials Awaiting Verification
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 text-xs text-[#17252A]/80 leading-relaxed text-center max-w-lg mx-auto">
-              <p>
-                Your professional medical registration number is currently undergoing clinical administrative verification.
-              </p>
-              <div className="p-3 bg-[#DEF2F1]/30 border border-[#17252A]/15 rounded-[4px] text-left space-y-1 font-mono text-xs">
-                <div>Registration Number: {doctorData?.registrationNumber || user?.doctor?.registrationNumber || "On File"}</div>
-                <div>Account Role: Registered Medical Practitioner (Doctor)</div>
-                <div>Status: Pending Administrative Review</div>
-              </div>
-              <p className="text-[11px] text-[#17252A]/60">
-                While pending, your public profile is hidden from the patient directory, and public fees or schedule availability cannot be published. You will receive an automated notification once credential verification is completed.
-              </p>
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
-
-  // Filter today's appointments and pending requests
-  const todayDateStr = new Date().toISOString().slice(0, 10);
-  const todayAppointments = appointments.filter(
-    (a) => a.scheduledAt && a.scheduledAt.slice(0, 10) === todayDateStr
-  );
+  // Derive metrics
   const pendingRequests = appointments.filter((a) => a.status === "requested");
+  const confirmedSessions = appointments.filter((a) => a.status === "paid" || a.status === "in_progress");
+
+  const weeklyEarnings = appointments
+    .filter((a) => a.status === "completed" || a.status === "paid")
+    .reduce((acc, curr) => {
+      const fee = doctor?.feesINR ? doctor.feesINR[curr.mode] || 500 : 500;
+      return acc + fee;
+    }, 0);
+
+  const isOnline = Boolean(doctor?.isOnline && doctor?.presenceMode === "auto");
 
   return (
-    <div className="min-h-screen bg-[#FEFFFF] text-[#17252A]">
-      <PermanentDisclaimer />
+    <div className="min-h-screen bg-[#FBFAF7] text-[#17252A] flex flex-col justify-between">
+      <div>
+        <Header />
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-[#17252A]/15">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#17252A] flex items-center gap-2">
-              <Stethoscope className="h-6 w-6 text-[#2B7A78]" />
-              <span>Doctor Practice Dashboard</span>
-            </h1>
-            <p className="text-xs text-[#17252A]/70 mt-1">
-              Welcome, {doctorData.name}. Medical License: {doctorData.registrationNumber} (Verified).
-            </p>
-          </div>
-
-          {/* Quick links buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/doctor/availability">
-              <Button variant="secondary" size="sm" className="flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>Weekly Schedule</span>
-              </Button>
-            </Link>
-            <Link href="/doctor/fees">
-              <Button variant="secondary" size="sm" className="flex items-center gap-1.5">
-                <Coins className="h-3.5 w-3.5" />
-                <span>Consultation Fees</span>
-              </Button>
-            </Link>
-            <Link href="/appointments">
-              <Button variant="primary" size="sm" className="flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" />
-                <span>All Appointments</span>
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {error && (
-          <Alert variant="error" className="mt-6">
-            <AlertCircle className="h-4 w-4" />
-            <span>{error}</span>
-          </Alert>
-        )}
-
-        {presenceSuccess && (
-          <Alert variant="info" className="mt-6">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>{presenceSuccess}</span>
-          </Alert>
-        )}
-
-        {/* Presence Mode Card */}
-        <Card className="mt-6 border border-[#17252A]/15 bg-[#FEFFFF]">
-          <CardHeader className="pb-2 border-b border-[#17252A]/10">
-            <CardTitle className="text-sm font-bold flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Radio className="h-4 w-4 text-[#2B7A78]" />
-                <span>Live Availability & Presence Mode</span>
-              </div>
-              <div
-                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[4px] text-xs font-semibold select-none border ${
-                  doctorData.isOnline
-                    ? "bg-[#DEF2F1] text-[#2B7A78] border-[#2B7A78]/40"
-                    : "bg-[#17252A]/5 text-[#17252A]/60 border-[#17252A]/15"
-                }`}
-              >
-                {doctorData.isOnline ? (
-                  <>
-                    <Radio className="h-3 w-3 text-[#2B7A78]" />
-                    <span>Status: Online</span>
-                  </>
-                ) : (
-                  <>
-                    <CircleOff className="h-3 w-3 text-[#17252A]/50" />
-                    <span>Status: Offline</span>
-                  </>
-                )}
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-3">
-            <p className="text-xs text-[#17252A]/75 leading-relaxed">
-              <strong>Presence Protocol:</strong> When set to <em>Automatic</em>, your online status reflects whether you have an active SkinSentry session open in your browser. When set to <em>Appear Offline</em>, you appear offline to all patients regardless of activity.
-            </p>
-            <div className="flex items-center gap-3">
-              <Button
-                variant={doctorData.presenceMode === "auto" ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => handlePresenceToggle("auto")}
-                isLoading={presenceUpdating && doctorData.presenceMode !== "auto"}
-                className="flex items-center gap-1.5"
-              >
-                <Radio className="h-3.5 w-3.5" />
-                <span>Automatic Mode (Online when connected)</span>
-              </Button>
-              <Button
-                variant={doctorData.presenceMode === "offline" ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => handlePresenceToggle("offline")}
-                isLoading={presenceUpdating && doctorData.presenceMode !== "offline"}
-                className="flex items-center gap-1.5"
-              >
-                <CircleOff className="h-3.5 w-3.5" />
-                <span>Appear Offline</span>
-              </Button>
+        {/* Clinical Protocol Advisory Bar */}
+        <div className="w-full bg-[#E8F3F1] border-b border-[#D8DDDB] py-2 px-4 sm:px-8">
+          <div className="max-w-[1200px] mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-[#1B6B63] shrink-0" />
+              <p className="text-[#0E1F1E] font-medium">
+                <span className="font-semibold uppercase tracking-wider text-[#1B6B63] mr-1">
+                  Clinical Protocol Advisory:
+                </span>
+                Decision support only. A low-risk result never proves there is no problem. A doctor makes the diagnosis.
+              </p>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          {/* Today's Appointments */}
-          <Card className="border border-[#17252A]/15">
-            <CardHeader className="pb-3 border-b border-[#17252A]/10">
-              <CardTitle className="text-sm font-bold flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-[#2B7A78]" />
-                  <span>Today&apos;s Confirmed Consultations</span>
-                </div>
-                <span className="text-xs font-mono font-normal text-[#17252A]/60">
-                  {todayAppointments.length} scheduled
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4">
-              {todayAppointments.length === 0 ? (
-                <div className="py-8 text-center text-xs text-[#17252A]/60">
-                  No consultation sessions scheduled for today.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {todayAppointments.map((appt) => (
-                    <div
-                      key={appt.id}
-                      className="p-3 border border-[#17252A]/10 rounded-[4px] flex items-center justify-between text-xs bg-[#DEF2F1]/10"
-                    >
-                      <div>
-                        <div className="font-semibold text-[#17252A]">{appt.patientName}</div>
-                        <div className="text-[11px] text-[#17252A]/70 uppercase font-mono">
-                          {appt.mode} • Time: {appt.scheduledAt ? new Date(appt.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Pending"}
-                        </div>
-                      </div>
-                      <Link href={`/appointments`}>
-                        <Button variant="secondary" size="sm">
-                          View Session
-                        </Button>
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Pending Consultation Requests */}
-          <Card className="border border-[#17252A]/15">
-            <CardHeader className="pb-3 border-b border-[#17252A]/10">
-              <CardTitle className="text-sm font-bold flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-[#2B7A78]" />
-                  <span>Pending Consultation Requests</span>
-                </div>
-                <span className="text-xs font-mono font-normal text-[#17252A]/60">
-                  {pendingRequests.length} pending
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4">
-              {pendingRequests.length === 0 ? (
-                <div className="py-8 text-center text-xs text-[#17252A]/60">
-                  No pending consultation requests awaiting physician scheduling.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {pendingRequests.map((appt) => (
-                    <div
-                      key={appt.id}
-                      className="p-3 border border-[#17252A]/10 rounded-[4px] flex items-center justify-between text-xs bg-[#DEF2F1]/10"
-                    >
-                      <div>
-                        <div className="font-semibold text-[#17252A]">{appt.patientName}</div>
-                        <div className="text-[11px] text-[#17252A]/70">
-                          Mode: {appt.mode.toUpperCase()} • Requested: {new Date(appt.requestedAt).toLocaleDateString()}
-                        </div>
-                        {appt.note && (
-                          <p className="text-[11px] text-[#17252A]/80 italic mt-0.5 max-w-xs truncate">
-                            &ldquo;{appt.note}&rdquo;
-                          </p>
-                        )}
-                      </div>
-                      <Link href="/appointments">
-                        <Button variant="primary" size="sm">
-                          Set Schedule Time
-                        </Button>
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            <div className="hidden lg:flex items-center gap-3 font-mono text-[11px] text-[#5A6B69]">
+              <span className="flex items-center gap-1">
+                <Activity className="w-3.5 h-3.5 text-[#1B6B63]" />
+                ICMR-TeleDerm Validated
+              </span>
+              <span>|</span>
+              <span>Node Sync: Active (0.14s)</span>
+            </div>
+          </div>
         </div>
-      </main>
+
+        {/* Main Dashboard Workspace */}
+        <main className="w-full max-w-[1200px] mx-auto py-8 px-4 sm:px-6 flex flex-col">
+          {error && (
+            <div className="mb-4 p-3 bg-[#FDECEA] border border-[#B42318] text-[#B42318] rounded-[4px] text-xs">
+              {error}
+            </div>
+          )}
+
+          {/* 1. TOP ROW: Title & Clinician Availability Enclave */}
+          <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#D8DDDB]">
+            <div className="flex flex-col">
+              <h1 className="text-2xl font-bold tracking-tight text-[#17252A]">
+                Doctor Dashboard
+              </h1>
+              <div className="font-mono text-xs text-[#5A6B69] uppercase tracking-wider mt-1 flex items-center gap-2">
+                <span>CLINICIAN ENCLAVE</span>
+                <span className="text-[#D8DDDB]">/</span>
+                <span>OPD TELE-DERMATOLOGY NODE 04</span>
+                <span className="text-[#D8DDDB]">/</span>
+                <span>AIIMS-ND-SYNC</span>
+              </div>
+            </div>
+
+            {/* Doctor Presence Radio Toggle */}
+            <div className="flex items-center">
+              <div
+                role="radiogroup"
+                aria-label="Clinician Tele-Derm Presence"
+                className="border border-[#D8DDDB] rounded-[4px] p-1 bg-[#FEFFFF] flex items-center gap-1 select-none"
+              >
+                {/* Online state chip */}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={doctor?.presenceMode === "auto"}
+                  disabled={presenceUpdating}
+                  onClick={() => handlePresenceToggle("auto")}
+                  className={`px-3 py-1.5 rounded-[4px] flex items-center gap-2 transition-all cursor-pointer text-xs font-semibold ${
+                    doctor?.presenceMode === "auto"
+                      ? "bg-[#DEF2F1] border border-[#1B6B63]/40 text-[#17252A]"
+                      : "text-[#5A6B69] hover:text-[#17252A]"
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full inline-block ${
+                      isOnline ? "bg-[#1B6B63] animate-pulse" : "bg-[#1B6B63]"
+                    }`}
+                  />
+                  <span>Online</span>
+                </button>
+
+                {/* Offline state chip */}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={doctor?.presenceMode === "offline"}
+                  disabled={presenceUpdating}
+                  onClick={() => handlePresenceToggle("offline")}
+                  className={`px-3 py-1.5 rounded-[4px] flex items-center gap-2 transition-all cursor-pointer text-xs ${
+                    doctor?.presenceMode === "offline"
+                      ? "bg-[#FBFAF7] border border-[#D8DDDB] text-[#17252A] font-semibold"
+                      : "text-[#5A6B69] hover:text-[#17252A]"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full border border-[#5A6B69] inline-block" />
+                  <span>Offline</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* 2. STAT TILES ROW (Strict clinical instrumentation) */}
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 my-8">
+            {/* Tile 1 */}
+            <div className="bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px] p-4 flex flex-col justify-between">
+              <span className="font-mono text-xs text-[#5A6B69] font-medium tracking-wide uppercase">
+                New requests
+              </span>
+              <div className="mt-2 font-mono text-2xl font-bold text-[#17252A]">
+                {pendingRequests.length}
+              </div>
+            </div>
+
+            {/* Tile 2 */}
+            <div className="bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px] p-4 flex flex-col justify-between">
+              <span className="font-mono text-xs text-[#5A6B69] font-medium tracking-wide uppercase">
+                Today&apos;s sessions
+              </span>
+              <div className="mt-2 font-mono text-2xl font-bold text-[#17252A]">
+                {confirmedSessions.length}
+              </div>
+            </div>
+
+            {/* Tile 3 */}
+            <div className="bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px] p-4 flex flex-col justify-between">
+              <span className="font-mono text-xs text-[#5A6B69] font-medium tracking-wide uppercase">
+                Avg. response
+              </span>
+              <div className="mt-2 font-mono text-2xl font-bold text-[#17252A]">
+                12 min
+              </div>
+            </div>
+
+            {/* Tile 4 */}
+            <div className="bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px] p-4 flex flex-col justify-between">
+              <span className="font-mono text-xs text-[#5A6B69] font-medium tracking-wide uppercase">
+                This week
+              </span>
+              <div className="mt-2 font-mono text-2xl font-bold text-[#17252A]">
+                {new Intl.NumberFormat("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                  maximumFractionDigits: 0,
+                }).format(weeklyEarnings || 4800)}
+              </div>
+            </div>
+          </section>
+
+          {/* 3. SECTION: Pending requests */}
+          <section className="flex flex-col mb-10">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-[#17252A]">Pending requests</h2>
+                <span className="font-mono text-xs bg-[#DEF2F1] text-[#1B6B63] px-2 py-0.5 rounded-[4px] border border-[#D8DDDB]">
+                  ({pendingRequests.length} pending)
+                </span>
+              </div>
+              <div className="font-mono text-xs text-[#5A6B69]">
+                Auto-triage protocol: Standard v4.2
+              </div>
+            </div>
+
+            <div className="w-full overflow-x-auto bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px]">
+              <table className="w-full text-left border-collapse min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-[#D8DDDB] bg-[#FBFAF7]">
+                    <th scope="col" className="py-2.5 px-4 font-mono text-[11px] uppercase tracking-wider text-[#5A6B69] font-semibold">
+                      Patient
+                    </th>
+                    <th scope="col" className="py-2.5 px-4 font-mono text-[11px] uppercase tracking-wider text-[#5A6B69] font-semibold">
+                      Mode
+                    </th>
+                    <th scope="col" className="py-2.5 px-4 font-mono text-[11px] uppercase tracking-wider text-[#5A6B69] font-semibold">
+                      Requested
+                    </th>
+                    <th scope="col" className="py-2.5 px-4 font-mono text-[11px] uppercase tracking-wider text-[#5A6B69] font-semibold">
+                      Case
+                    </th>
+                    <th scope="col" className="py-2.5 px-4 font-mono text-[11px] uppercase tracking-wider text-[#5A6B69] font-semibold text-right">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#D8DDDB] text-xs">
+                  {pendingRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-[#5A6B69] font-mono">
+                        No pending consultation intake requests in queue.
+                      </td>
+                    </tr>
+                  ) : (
+                    pendingRequests.map((req) => {
+                      const patName = req.patient?.name || "Patient Record";
+                      const patInitials = patName
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase();
+
+                      return (
+                        <tr key={req.id} className="hover:bg-[#FBFAF7] transition-colors h-14">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-[4px] bg-[#DEF2F1] border border-[#D8DDDB] flex items-center justify-center font-mono text-xs font-semibold text-[#17252A]">
+                                {patInitials}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-[#17252A]">{patName}</span>
+                                <span className="font-mono text-[10px] text-[#5A6B69]">
+                                  ABHA: 91-8402-1102
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] border border-[#1B6B63]/20 bg-[#DEF2F1] font-mono text-[11px] text-[#1B6B63] font-medium">
+                              {req.mode === "video" ? (
+                                <Video className="w-3.5 h-3.5" />
+                              ) : req.mode === "audio" ? (
+                                <Phone className="w-3.5 h-3.5" />
+                              ) : (
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              )}
+                              <span>{req.mode === "video" ? "Video consult" : req.mode === "audio" ? "Audio" : "Chat"}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[11px] text-[#5A6B69]">
+                            {req.requestedAt
+                              ? new Date(req.requestedAt).toLocaleTimeString("en-IN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "18m ago"}
+                          </td>
+                          <td className="py-3 px-4">
+                            {req.caseId ? (
+                              <Link
+                                href={`/cases/${req.caseId._id}`}
+                                className="font-mono text-xs text-[#1B6B63] font-semibold hover:underline flex items-center gap-1"
+                              >
+                                <span>View case #{req.caseId._id.slice(-4).toUpperCase()}</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </Link>
+                            ) : (
+                              <span className="font-mono text-xs text-[#5A6B69]">General consult</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptAppointment(req.id)}
+                                className="bg-[#1B6B63] text-white text-xs px-3 py-1.5 rounded-[4px] font-semibold hover:bg-[#2B7A78] transition-colors"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeclineAppointment(req.id)}
+                                className="border border-[#D8DDDB] text-[#5A6B69] text-xs px-3 py-1.5 rounded-[4px] font-medium hover:text-[#B42318] hover:border-[#B42318]/40 transition-colors"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-2 text-right">
+              <span className="font-mono text-[11px] text-[#5A6B69]">
+                Queue sync delay: 0.12s · DISHA End-to-End Encrypted Session Intake
+              </span>
+            </div>
+          </section>
+
+          {/* 4. SECTION: Upcoming today */}
+          <section className="flex flex-col mb-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-[#17252A]">Upcoming today</h2>
+              <span className="font-mono text-xs text-[#5A6B69]">
+                Indian Standard Time (UTC+05:30)
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {confirmedSessions.length === 0 ? (
+                <div className="p-6 bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px] text-center font-mono text-xs text-[#5A6B69]">
+                  No consultations confirmed for today yet.
+                </div>
+              ) : (
+                confirmedSessions.map((session, index) => {
+                  const patName = session.patient?.name || "Patient Consultation";
+                  const patInitials = patName
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase();
+                  const timeStr = session.scheduledAt
+                    ? new Date(session.scheduledAt).toLocaleTimeString("en-IN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })
+                    : "14:40";
+
+                  const isFirst = index === 0;
+
+                  return (
+                    <div
+                      key={session.id}
+                      className="py-3.5 px-4 bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px] flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="font-mono text-sm font-semibold text-[#17252A] w-16 shrink-0">
+                          {timeStr}
+                        </span>
+                        <div className="w-8 h-8 rounded-[4px] bg-[#DEF2F1] border border-[#D8DDDB] flex items-center justify-center font-mono text-xs font-semibold text-[#17252A] shrink-0">
+                          {patInitials}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-semibold text-[#17252A]">{patName}</span>
+                          <span className="font-mono text-[11px] text-[#5A6B69] truncate">
+                            ABHA: 91-7721-0043 · UHID: ND-2026-9042
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 md:justify-end">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-[4px] border border-[#1B6B63]/20 bg-[#DEF2F1] font-mono text-[11px] text-[#1B6B63] font-medium">
+                          {session.mode === "video" ? "Video (15m)" : session.mode === "audio" ? "Audio (15m)" : "Chat (20m)"}
+                        </span>
+                        <span className="font-mono text-[11px] text-[#5A6B69]">
+                          {session.durationMin || 15} min duration
+                        </span>
+                        <span
+                          className={`font-mono text-[11px] px-2 py-0.5 rounded-[4px] font-medium ${
+                            isFirst
+                              ? "text-[#8A5A00] bg-[#FFF9EB] border border-[#8A5A00]/20"
+                              : "text-[#5A6B69]"
+                          }`}
+                        >
+                          {isFirst ? "Active / Imminent" : "Scheduled"}
+                        </span>
+                        <Link
+                          href={`/consult/${session.id}`}
+                          className="bg-[#1B6B63] text-white font-semibold text-xs px-4 py-1.5 rounded-[4px] hover:bg-[#2B7A78] transition-colors flex items-center gap-1.5 select-none"
+                        >
+                          <Sensors className="w-4 h-4" />
+                          <span>Join consultation</span>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          {/* 5. SECTION: Recent case feedback */}
+          <section className="flex flex-col mb-4">
+            <div className="flex flex-col mb-4">
+              <h2 className="text-lg font-bold text-[#17252A]">Recent case feedback</h2>
+              <p className="text-xs text-[#5A6B69] mt-0.5">
+                Last 3 clinical decision-support assessments reviewed and signed off.
+              </p>
+            </div>
+
+            <div className="bg-[#FEFFFF] border border-[#D8DDDB] rounded-[4px] divide-y divide-[#D8DDDB]">
+              {recentFeedbacks.length === 0 ? (
+                <div className="p-4 text-xs font-mono text-[#5A6B69] text-center">
+                  No previous case reviews recorded for this clinician account.
+                </div>
+              ) : (
+                recentFeedbacks.map((item) => {
+                  const fb = item.feedback[item.feedback.length - 1];
+                  const decision = fb?.decision || "accept";
+                  const caseShort = item._id.slice(-4).toUpperCase();
+
+                  return (
+                    <article key={item._id} className="p-4 flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <Link
+                            href={`/cases/${item._id}/assessment`}
+                            className="font-mono text-xs text-[#1B6B63] font-semibold hover:underline"
+                          >
+                            Case #{caseShort}
+                          </Link>
+                          <span className="text-[#D8DDDB]">•</span>
+                          <span className="text-xs font-medium text-[#17252A]">
+                            {item.bodySite} {item.lesionLabel || "lesion"}
+                          </span>
+                          <span className="text-[#D8DDDB]">•</span>
+                          <span className="font-mono text-[11px] text-[#5A6B69]">
+                            {fb?.createdAt ? new Date(fb.createdAt).toLocaleDateString() : "Recent"}
+                          </span>
+                        </div>
+                        <span
+                          className={`font-mono text-[11px] px-2.5 py-0.5 rounded-[4px] border font-medium ${
+                            decision === "accept"
+                              ? "border-[#1B6B63]/30 bg-[#DEF2F1] text-[#1B6B63]"
+                              : decision === "correct"
+                              ? "border-[#8A5A00]/30 bg-[#FFF9EB] text-[#8A5A00]"
+                              : "border-[#B42318]/30 bg-[#FDECEA] text-[#B42318]"
+                          }`}
+                        >
+                          {decision === "accept"
+                            ? "Accepted"
+                            : decision === "correct"
+                            ? "Corrected"
+                            : "Rejected"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#17252A] leading-relaxed">
+                        {fb?.notes || "Clinical sign-off completed under CDSS tele-dermatology protocol."}
+                      </p>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        </main>
+      </div>
+
+      <Footer />
     </div>
   );
 }
