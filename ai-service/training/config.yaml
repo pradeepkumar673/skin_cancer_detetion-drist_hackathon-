@@ -1,0 +1,34 @@
+# SkinSentry Training and Dataset Configuration
+
+# Random seed for leak-free deterministic dataset splitting
+random_seed: 42
+
+# Dataset split ratios for train/validation/test (grouped by patient/lesion_id)
+splits:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+
+# Image quality percentile for empirical threshold extraction
+quality_percentile: 5
+
+# Pretrained feature extractor backbone
+backbone_id: "facebook/dinov2-small"
+
+# Selected clinical classes for Skin Disease classifier
+disease_classes:
+  - "eczema"
+  - "psoriasis"
+  - "tinea_ringworm"
+  - "acne_vulgaris"
+  - "rosacea"
+  - "vitiligo"
+
+# Model hyperparameters
+nurses:
+  target_recall: 0.95
+  c_grid: [0.01, 0.1, 1.0, 10.0]
+
+cancer:
+  classifier_c: 1.0
+  box_initialiser: "otsu"
