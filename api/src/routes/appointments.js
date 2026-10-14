@@ -11,6 +11,7 @@ import { Appointment } from '../models/Appointment.js';
 import { Doctor } from '../models/Doctor.js';
 import { Patient } from '../models/Patient.js';
 import { Case } from '../models/Case.js';
+import { Consent } from '../models/Consent.js';
 import { Availability } from '../models/Availability.js';
 import {
   createAppointmentSchema,
@@ -489,6 +490,125 @@ router.get(
     }
 
     return res.status(200).json({ appointment });
+  })
+);
+
+/**
+ * PATCH /appointments/:id/summary
+ * Doctor submits clinical session summary after or during consultation.
+ */
+router.patch(
+  '/:id/summary',
+  requireAuth,
+  requireRole('doctor'),
+  asyncHandler(async (req, res) => {
+    const appointment = await Appointment.findById(req.params.id);
+    if (!appointment) {
+      throw new HttpError(404, 'Appointment not found', 'not_found');
+    }
+
+    const doctor = await Doctor.findOne({ userId: req.user._id });
+    if (!doctor || !appointment.doctorId.equals(doctor._id)) {
+      throw new HttpError(403, 'Forbidden: Not your appointment', 'forbidden');
+    }
+
+    const { summary } = req.body;
+    if (typeof summary !== 'string' || !summary.trim()) {
+      throw new HttpError(400, 'Summary text is required', 'invalid_input');
+    }
+
+    appointment.sessionSummary = summary.trim();
+    await appointment.save();
+
+    await writeAudit({
+      actorId: req.user._id,
+      action: 'APPOINTMENT_SUMMARY_UPDATED',
+      entityType: 'Appointment',
+      entityId: appointment._id,
+      meta: { summaryLength: appointment.sessionSummary.length },
+      ip: clientIp(req),
+    });
+
+    return res.status(200).json({
+      success: true,
+      appointmentId: appointment._id,
+      sessionSummary: appointment.sessionSummary,
+    });
+  })
+);
+
+/**
+ * GET /appointments/:id/case
+ * Doctor views patient case inside consultation session ONLY IF active consent exists.
+ * Every view records an AuditLog entry.
+ */
+router.get(
+  '/:id/case',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const appointment = await Appointment.findById(req.params.id);
+    if (!appointment) {
+      throw new HttpError(404, 'Appointment not found', 'not_found');
+    }
+
+    const doctor = await Doctor.findOne({ userId: req.user._id });
+    const patient = await Patient.findOne({ userId: req.user._id });
+
+    const isDoctor = doctor && appointment.doctorId.equals(doctor._id);
+    const isPatient = patient && appointment.patientId.equals(patient._id);
+
+    if (!isDoctor && !isPatient) {
+      throw new HttpError(403, 'Forbidden: You do not participate in this appointment', 'forbidden');
+    }
+
+    if (!appointment.caseId) {
+      return res.status(200).json({
+        case: null,
+        consentActive: false,
+        message: 'No screening case is attached to this consultation.',
+      });
+    }
+
+    // Check active consent
+    const consent = await Consent.findOne({
+      patientId: appointment.patientId,
+      doctorId: appointment.doctorId,
+      caseId: appointment.caseId,
+      revokedAt: null,
+    });
+
+    if (!consent) {
+      return res.status(200).json({
+        case: null,
+        consentActive: false,
+        message: 'Patient has not granted consent to share this screening case, or consent was revoked.',
+      });
+    }
+
+    const caseDoc = await Case.findById(appointment.caseId);
+    if (!caseDoc) {
+      return res.status(404).json({
+        case: null,
+        consentActive: false,
+        message: 'Screening case document not found.',
+      });
+    }
+
+    if (isDoctor) {
+      await writeAudit({
+        actorId: req.user._id,
+        action: 'DOCTOR_VIEW_CASE_SESSION',
+        entityType: 'Case',
+        entityId: caseDoc._id,
+        meta: { appointmentId: String(appointment._id) },
+        ip: clientIp(req),
+      });
+    }
+
+    return res.status(200).json({
+      case: caseDoc,
+      consentActive: true,
+    });
   })
 );
 

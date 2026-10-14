@@ -22,6 +22,7 @@ import casesRoutes from './routes/cases.js';
 import appointmentsRoutes from './routes/appointments.js';
 import consentsRoutes from './routes/consents.js';
 import paymentsRoutes from './routes/payments.js';
+import rtcRoutes from './routes/rtc.js';
 import { initSocket, resetDoctorPresence } from './services/socket.js';
 import { verifyMailer, getMailStatus } from './services/mailer.js';
 import { startCronJobs, stopCronJobs } from './services/cron.js';
@@ -80,6 +81,7 @@ app.use('/cases', casesRoutes);
 app.use('/appointments', appointmentsRoutes);
 app.use('/consents', consentsRoutes);
 app.use('/payments', paymentsRoutes);
+app.use('/rtc', rtcRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {

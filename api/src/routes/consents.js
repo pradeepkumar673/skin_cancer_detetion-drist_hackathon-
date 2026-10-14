@@ -9,6 +9,7 @@ import { Consent } from '../models/Consent.js';
 import { Patient } from '../models/Patient.js';
 import { Case } from '../models/Case.js';
 import { createConsentSchema, revokeConsentSchema } from '../validators/appointment.js';
+import { emitConsentRevoked } from '../services/socket.js';
 
 const router = Router();
 
@@ -87,6 +88,8 @@ router.delete(
 
     consent.revokedAt = new Date();
     await consent.save();
+
+    emitConsentRevoked({ doctorId: consent.doctorId, caseId: consent.caseId });
 
     await writeAudit({
       actorId: req.user._id,

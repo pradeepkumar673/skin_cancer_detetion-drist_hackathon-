@@ -758,19 +758,16 @@ function AppointmentsContent() {
 
                           {/* Join session when paid or in_progress */}
                           {["paid", "in_progress"].includes(appt.status) && (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              className="flex items-center gap-1.5"
-                              onClick={() =>
-                                alert(
-                                  "Real-time consultation room (chat, audio, video) connects in Step 24."
-                                )
-                              }
-                            >
-                              <span>Join Session Room</span>
-                              <ArrowRight className="h-3.5 w-3.5" />
-                            </Button>
+                            <Link href={`/consult/${appt.id}`}>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="flex items-center gap-1.5"
+                              >
+                                <span>Join Session Room</span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </Button>
+                            </Link>
                           )}
 
                           {/* Cancel button */}

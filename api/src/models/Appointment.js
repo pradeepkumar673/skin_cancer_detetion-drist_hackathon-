@@ -78,6 +78,17 @@ const appointmentSchema = new mongoose.Schema(
       h24: { type: Boolean, default: false },
       h1: { type: Boolean, default: false },
     },
+    sessionStartedAt: {
+      type: Date,
+    },
+    sessionEndedAt: {
+      type: Date,
+    },
+    sessionSummary: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+    },
   },
   { timestamps: true }
 );
