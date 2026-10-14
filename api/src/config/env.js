@@ -55,6 +55,10 @@ export const envSchema = z.object({
   ORG_NAME: z.string().min(1, 'ORG_NAME is required'),
   CONTACT_EMAIL: z.string().email('CONTACT_EMAIL must be a valid email'),
   GOVERNING_LAW: z.string().min(1, 'GOVERNING_LAW is required'),
+  BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+  LOGIN_MAX_FAILED_ATTEMPTS: z.coerce.number().int().min(1).default(5),
+  LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().min(1).default(15),
+  REFRESH_COOKIE_NAME: z.string().min(1).default('refreshToken'),
 });
 
 export function validateEnv(source = process.env, exitOnError = true) {

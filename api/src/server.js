@@ -13,6 +13,9 @@ import { initModels } from './models/index.js';
 import logger from './utils/logger.js';
 import requestIdMiddleware from './middleware/requestId.js';
 import errorHandler from './middleware/error.js';
+import authRoutes from './routes/auth.js';
+import adminRoutes from './routes/admin.js';
+import doctorRoutes from './routes/doctors.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,12 +54,16 @@ const authLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => config.NODE_ENV === 'test',
   message: {
     error: 'rate_limit_exceeded',
     message: 'Too many requests on authentication routes. Please try again later.',
   },
 });
 app.use('/auth', authLimiter);
+app.use('/auth', authRoutes);
+app.use('/admin', adminRoutes);
+app.use('/doctors', doctorRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {

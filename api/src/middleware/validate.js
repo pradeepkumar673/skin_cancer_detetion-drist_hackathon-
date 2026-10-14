@@ -12,12 +12,13 @@ export function validateRequest(schema) {
       }
       next();
     } catch (err) {
-      if (err.errors) {
-        return res.status(422).json({
+      const issues = err.issues || err.errors;
+      if (issues) {
+        return res.status(400).json({
           error: 'validation_error',
           message: 'Invalid request input',
-          details: err.errors.map((e) => ({
-            field: e.path.join('.'),
+          details: issues.map((e) => ({
+            field: Array.isArray(e.path) ? e.path.join('.') : String(e.path || ''),
             message: e.message,
           })),
           requestId: req.id || req.requestId,

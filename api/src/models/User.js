@@ -42,6 +42,13 @@ const userSchema = new mongoose.Schema(
     refreshTokenHash: {
       type: String,
     },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockedUntil: {
+      type: Date,
+    },
     termsVersionAccepted: {
       type: String,
     },
