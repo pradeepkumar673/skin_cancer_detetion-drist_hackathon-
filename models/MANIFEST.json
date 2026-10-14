@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-14T11:28:21.940643+00:00",
-  "git_commit": "a4b243b1784133eeb88006c055635eff88813a35",
+  "generated_at": "2026-10-14T11:33:12.775103+00:00",
+  "git_commit": "c22c6b0be20838410805dd0a83a931598b1e9d92",
   "backbone_id": "D:\\projects\\skin_cancer_detetion(drist_hackathon)\\models\\backbone\\dinov2_small",
-  "artifacts_count": 23,
+  "artifacts_count": 28,
   "artifacts": [
     {
       "path": "models/backbone/dinov2-small/.cache/huggingface/.gitignore",
@@ -76,10 +76,10 @@
     },
     {
       "path": "models/backbone/dinov2_small/model.safetensors",
-      "size_bytes": 6291456,
-      "size_mb": 6.0,
-      "sha256": "d38790b02350170b74fe39103fa54c0d115017640968f0e7f2e28d5b59160a8b",
-      "updated_at": "2026-10-14T11:28:14.350473+00:00"
+      "size_bytes": 17825792,
+      "size_mb": 17.0,
+      "sha256": "0437f2fd939fe1858cc58c2aa0371ee10b47fda460f20a8d68aac359ff41f8fc",
+      "updated_at": "2026-10-14T11:32:41.208537+00:00"
     },
     {
       "path": "models/backbone/dinov2_small/preprocessor_config.json",
@@ -118,10 +118,10 @@
     },
     {
       "path": "models/disease/dermnet_vit/model.safetensors",
-      "size_bytes": 30408704,
-      "size_mb": 29.0,
-      "sha256": "0ee4660c069676f1f99ba13a83ec64ee5d260eabb7f4ad45c9beabf8d483444c",
-      "updated_at": "2026-10-14T11:28:10.344014+00:00"
+      "size_bytes": 38797312,
+      "size_mb": 37.0,
+      "sha256": "835af9f9471b9332135ba2888376ab18915a703c731108777a5290d7f0b89fda",
+      "updated_at": "2026-10-14T11:32:45.610444+00:00"
     },
     {
       "path": "models/disease/dinov2_dermnet/.cache/huggingface/.gitignore",
@@ -159,11 +159,46 @@
       "updated_at": "2026-10-14T11:09:56.043590+00:00"
     },
     {
+      "path": "models/metrics/nurses.json",
+      "size_bytes": 1744,
+      "size_mb": 0.0,
+      "sha256": "e75af0a7fe4341f709cb5a8aec38b9a390d7f5603591e6e605c527ccc1786c51",
+      "updated_at": "2026-10-14T11:33:12.490150+00:00"
+    },
+    {
       "path": "models/metrics/quality_gate.json",
       "size_bytes": 1173,
       "size_mb": 0.0,
       "sha256": "83c6c870793336f7d68dcb7210c3390eaac2d8a18382798101dbd3e80d51ff80",
       "updated_at": "2026-10-14T11:20:03.936154+00:00"
+    },
+    {
+      "path": "models/nurses/cancer_nurse.joblib",
+      "size_bytes": 4437,
+      "size_mb": 0.0,
+      "sha256": "46c49b815581c0493c3db66176e6423a654492740563d05861fcb4fc64f1e3d3",
+      "updated_at": "2026-10-14T11:33:12.301969+00:00"
+    },
+    {
+      "path": "models/nurses/disease_nurse.joblib",
+      "size_bytes": 4437,
+      "size_mb": 0.0,
+      "sha256": "70f526da600f1533f7eee4d5426d7b13359384edb4342cf80a64e76c1fec192c",
+      "updated_at": "2026-10-14T11:33:12.337508+00:00"
+    },
+    {
+      "path": "models/nurses/ood.joblib",
+      "size_bytes": 1192480,
+      "size_mb": 1.14,
+      "sha256": "a89998a0b7aa4c501d43c0f4672a64881dc8894a97796ff0d993ca85ed4f9048",
+      "updated_at": "2026-10-14T11:33:12.426808+00:00"
+    },
+    {
+      "path": "models/nurses/ulcer_nurse.joblib",
+      "size_bytes": 4437,
+      "size_mb": 0.0,
+      "sha256": "9df21bcc0a6a82611125e06378865fd7df351f4c4bd8606b17dff1845f3b8dfd",
+      "updated_at": "2026-10-14T11:33:12.320497+00:00"
     }
   ]
 }

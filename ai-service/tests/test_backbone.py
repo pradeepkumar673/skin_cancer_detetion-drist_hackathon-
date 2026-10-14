@@ -10,7 +10,10 @@ from app.pipeline.backbone import Backbone
 @pytest.fixture(scope="module")
 def backbone():
     """Module-level fixture to load Backbone once for tests."""
-    return Backbone()
+    try:
+        return Backbone()
+    except FileNotFoundError as e:
+        pytest.skip(f"Backbone weights not yet downloaded: {e}")
 
 
 def test_backbone_embedding_shape(backbone):

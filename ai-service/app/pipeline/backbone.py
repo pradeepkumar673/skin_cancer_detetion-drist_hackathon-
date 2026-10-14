@@ -19,8 +19,8 @@ CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "training" / "conf
 
 
 def load_backbone_id() -> str:
-    # Prefer local offline directory if weights exist
-    if (LOCAL_BACKBONE_DIR / "model.safetensors").exists():
+    # Prefer local offline directory only if download is fully completed
+    if (LOCAL_BACKBONE_DIR / "SOURCE.txt").exists() and (LOCAL_BACKBONE_DIR / "model.safetensors").exists():
         return str(LOCAL_BACKBONE_DIR)
 
     if CONFIG_PATH.exists():
@@ -48,6 +48,13 @@ class Backbone:
 
     def _load_model(self):
         from transformers import AutoImageProcessor, AutoModel
+
+        # If local download is still in progress, raise clear FileNotFoundError
+        if not (LOCAL_BACKBONE_DIR / "SOURCE.txt").exists() and not Path(self.model_id).exists():
+            raise FileNotFoundError(
+                "DINOv2 backbone weights in models/backbone/dinov2_small are currently downloading. "
+                "Run 'python scripts/download_backbone_model.py' to download."
+            )
 
         token_arg = {"token": self.token} if (self.token and not Path(self.model_id).exists()) else {}
         try:

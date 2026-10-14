@@ -21,9 +21,12 @@ def test_health_without_key():
     assert isinstance(data["models"], list)
     assert len(data["models"]) == len(settings.required_model_files)
 
-    # Models are not yet trained, so all must report exists: false
-    for model_info in data["models"]:
-        assert model_info["exists"] is False
+    # Verify model statuses accurately reflect files on disk
+    model_map = {m["name"]: m["exists"] for m in data["models"]}
+    # Nurse files were trained in Step 9 and must report exists: true
+    assert model_map.get("nurses/cancer_nurse.joblib") is True
+    assert model_map.get("nurses/ulcer_nurse.joblib") is True
+    assert model_map.get("nurses/disease_nurse.joblib") is True
 
     assert "python_version" in data
     assert "package_versions" in data

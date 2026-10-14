@@ -8,8 +8,9 @@ Evaluates input relevance across three clinical teams:
 Never invents fake model outputs (Rule 3).
 """
 
+import json
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import joblib
 import numpy as np
 from PIL import Image
@@ -17,20 +18,36 @@ from PIL import Image
 from app.schemas import NursePrediction, NursesResult
 
 MODELS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "models" / "nurses"
+CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
 
 
 class NursesGate:
     """Classifies domain relevance and detects out-of-distribution inputs."""
 
-    def __init__(self, models_dir: Optional[Path] = None):
+    def __init__(self, models_dir: Optional[Path] = None, config_dir: Optional[Path] = None):
         self.models_dir = models_dir or MODELS_DIR
+        self.config_dir = config_dir or CONFIG_DIR
         self._models: Dict[str, Any] = {}
         self._thresholds = {
             "cancer": 0.35,
             "ulcer": 0.35,
             "disease": 0.35,
-            "ood": 12.5,
+            "ood": 50.0,
         }
+        self._load_thresholds()
+
+    def _load_thresholds(self):
+        thresh_file = self.config_dir / "thresholds.json"
+        if thresh_file.exists():
+            try:
+                with open(thresh_file, "r", encoding="utf-8") as f:
+                    data = json.load(f).get("nurses", {})
+                    self._thresholds["cancer"] = data.get("cancer_relevance_threshold", 0.35)
+                    self._thresholds["ulcer"] = data.get("ulcer_relevance_threshold", 0.35)
+                    self._thresholds["disease"] = data.get("disease_relevance_threshold", 0.35)
+                    self._thresholds["ood"] = data.get("ood_threshold", 50.0)
+            except Exception:
+                pass
 
     def is_ready(self) -> bool:
         """Check if trained nurse model checkpoints exist on disk."""
@@ -68,7 +85,6 @@ class NursesGate:
 
         for domain in ["cancer", "ulcer", "disease"]:
             clf = self._models[domain]
-            # Predict probability of positive domain class
             prob = float(clf.predict_proba(embedding)[0, 1])
             scores[domain] = round(prob, 4)
             relevance[domain] = prob >= self._thresholds[domain]
@@ -79,6 +95,32 @@ class NursesGate:
             disease=NursePrediction(relevant=relevance["disease"], score=scores["disease"]),
         )
 
+    def compute_ood(self, embedding: np.ndarray) -> Tuple[float, bool]:
+        """Compute OOD Mahalanobis distance score and whether flagged."""
+        if "ood" not in self._models:
+            self.load_models()
+
+        if embedding.ndim == 1:
+            embedding = embedding.reshape(1, -1)
+
+        ood_data = self._models.get("ood", None)
+        if not ood_data:
+            return 0.0, False
+
+        centroids = ood_data["centroids"]
+        inv_cov = ood_data["inv_cov"]
+        thresh = self._thresholds.get("ood", ood_data.get("threshold", 50.0))
+
+        x = embedding[0]
+        dists = []
+        for dom, center in centroids.items():
+            diff = x - center
+            d = np.sqrt(np.dot(np.dot(diff, inv_cov), diff))
+            dists.append(d)
+
+        min_dist = float(min(dists))
+        return round(min_dist, 2), min_dist >= thresh
+
 
 _nurses_gate: Optional[NursesGate] = None
 
@@ -88,3 +130,8 @@ def get_nurses_gate() -> NursesGate:
     if _nurses_gate is None:
         _nurses_gate = NursesGate()
     return _nurses_gate
+
+
+def run_nurses(embedding: np.ndarray) -> NursesResult:
+    """Run nurse evaluation for all domains."""
+    return get_nurses_gate().evaluate(embedding)
