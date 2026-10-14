@@ -5,8 +5,10 @@
   --color-ink: #17252A;
   --color-teal: #2B7A78;
   --color-teal-light: #3AAFA9;
+  --color-teal-dark: #1B6B63;
   --color-mist: #DEF2F1;
   --color-paper: #FEFFFF;
+  --color-canvas: #FBFAF7;
   --color-line: rgba(23, 37, 42, 0.16);
   --color-muted: rgba(23, 37, 42, 0.72);
 
@@ -22,14 +24,17 @@
 
   --font-sans: var(--font-ibm-plex-sans), sans-serif;
   --font-mono: var(--font-ibm-plex-mono), monospace;
+  --font-courier: var(--font-courier-prime), Courier, monospace;
 }
 
 :root {
   --ink: #17252A;
   --teal: #2B7A78;
   --teal-light: #3AAFA9;
+  --teal-dark: #1B6B63;
   --mist: #DEF2F1;
   --paper: #FEFFFF;
+  --canvas: #FBFAF7;
   --line: rgba(23, 37, 42, 0.16);
   --muted: rgba(23, 37, 42, 0.72);
 
