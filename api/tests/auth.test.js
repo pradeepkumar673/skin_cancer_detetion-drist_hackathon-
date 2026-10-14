@@ -29,6 +29,9 @@ function patientBody(overrides = {}) {
     sunExposure: 'moderate',
     familyHistorySkinCancer: false,
     isDiabetic: false,
+    termsVersionAccepted: '1.0.0',
+    termsAcceptedAt: new Date().toISOString(),
+    healthDataConsentAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -44,6 +47,8 @@ function doctorBody(overrides = {}) {
     specialty: 'dermatologist',
     registrationNumber: 'TNMC12345',
     bio: 'Dermatologist registered with the state medical council.',
+    termsVersionAccepted: '1.0.0',
+    termsAcceptedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -119,6 +124,23 @@ describe('Authentication and authorization', () => {
   it('rejects role admin on register', async () => {
     const res = await register(patientBody({ role: 'admin' }));
     expect(res.status).toBe(400);
+  });
+
+  it('rejects registration without terms acceptance with 400', async () => {
+    const body = patientBody();
+    delete body.termsVersionAccepted;
+    delete body.termsAcceptedAt;
+    const res = await register(body);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
+  });
+
+  it('rejects patient registration without health data consent with 400', async () => {
+    const body = patientBody();
+    delete body.healthDataConsentAt;
+    const res = await register(body);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
   });
 
   it('logs in a patient and sets an httpOnly SameSite=Lax refresh cookie', async () => {

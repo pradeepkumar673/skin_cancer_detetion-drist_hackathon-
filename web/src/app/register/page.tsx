@@ -18,6 +18,8 @@ import { FormField } from "@/components/ui/FormField";
 import { Alert } from "@/components/ui/Alert";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 
+import { legalMeta } from "@/content/legalMeta";
+
 const registerSchema = z
   .object({
     role: z.enum(["patient", "doctor"]),
@@ -39,8 +41,20 @@ const registerSchema = z
     specialty: z.enum(["dermatologist", "wound_care", "diabetologist", "general"]).optional(),
     registrationNumber: z.string().optional(),
     bio: z.string().optional(),
+    // Consent
+    termsAccepted: z.boolean().refine((val) => val === true, {
+      message: "You must accept the Terms and Conditions and Privacy Policy to register",
+    }),
+    healthConsent: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.role === "patient" && !data.healthConsent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["healthConsent"],
+        message: "You must consent to processing health photos for screening analysis",
+      });
+    }
     if (data.role === "doctor") {
       if (!data.specialty) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["specialty"], message: "Specialty is required" });
@@ -75,6 +89,8 @@ export default function RegisterPage() {
       languagePref: "en",
       isDiabetic: false,
       familyHistorySkinCancer: false,
+      termsAccepted: false,
+      healthConsent: false,
     },
   });
 
@@ -87,7 +103,25 @@ export default function RegisterPage() {
     setServerError(null);
     setSuccessMsg(null);
     try {
-      await registerAccount(data);
+      const payload = {
+        role: data.role,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        password: data.password,
+        languagePref: data.languagePref,
+        skinType: data.skinType,
+        sunExposure: data.sunExposure,
+        isDiabetic: data.isDiabetic,
+        familyHistorySkinCancer: data.familyHistorySkinCancer,
+        specialty: data.specialty,
+        registrationNumber: data.registrationNumber,
+        bio: data.bio,
+        termsVersionAccepted: legalMeta.version,
+        termsAcceptedAt: new Date().toISOString(),
+        healthDataConsentAt: role === "patient" ? new Date().toISOString() : undefined,
+      };
+      await registerAccount(payload);
       setSuccessMsg("Account registered successfully. Redirecting to sign in...");
       setTimeout(() => {
         router.push("/login");
@@ -304,6 +338,57 @@ export default function RegisterPage() {
                     </FormField>
                   </div>
                 )}
+
+                {/* Consent Checkboxes */}
+                <div className="space-y-3 pt-3 border-t border-[#17252A]/10">
+                  <div>
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        id="termsAccepted"
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded-[4px] border-[#17252A]/30 text-[#2B7A78] focus:ring-2 focus:ring-[#2B7A78]"
+                        {...register("termsAccepted")}
+                      />
+                      <label htmlFor="termsAccepted" className="text-xs text-[#17252A]/85 leading-relaxed cursor-pointer select-none">
+                        I have read and agree to the{" "}
+                        <Link href="/terms" target="_blank" className="font-semibold text-[#2B7A78] underline">
+                          Terms and Conditions
+                        </Link>{" "}
+                        and{" "}
+                        <Link href="/privacy" target="_blank" className="font-semibold text-[#2B7A78] underline">
+                          Privacy Policy
+                        </Link>
+                        .
+                      </label>
+                    </div>
+                    {errors.termsAccepted && (
+                      <p className="mt-1 text-[11px] font-medium text-[#B42318] pl-6.5">
+                        {errors.termsAccepted.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {role === "patient" && (
+                    <div>
+                      <div className="flex items-start gap-2.5">
+                        <input
+                          id="healthConsent"
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded-[4px] border-[#17252A]/30 text-[#2B7A78] focus:ring-2 focus:ring-[#2B7A78]"
+                          {...register("healthConsent")}
+                        />
+                        <label htmlFor="healthConsent" className="text-xs text-[#17252A]/85 leading-relaxed cursor-pointer select-none">
+                          I explicitly consent to the processing of my health information and skin photos for automated screening and decision-support analysis.
+                        </label>
+                      </div>
+                      {errors.healthConsent && (
+                        <p className="mt-1 text-[11px] font-medium text-[#B42318] pl-6.5">
+                          {errors.healthConsent.message}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <Button
                   type="submit"

@@ -31,8 +31,18 @@ export const registerSchema = {
       specialty: z.enum(['dermatologist', 'wound_care', 'diabetologist', 'general']).optional(),
       registrationNumber: z.string().trim().min(3).max(80).optional(),
       bio: z.string().trim().min(10).max(2000).optional(),
+      termsVersionAccepted: z.string().min(1, 'termsVersionAccepted is required'),
+      termsAcceptedAt: z.coerce.date({ required_error: 'termsAcceptedAt is required' }),
+      healthDataConsentAt: z.coerce.date().optional(),
     })
     .superRefine((data, ctx) => {
+      if (data.role === 'patient' && !data.healthDataConsentAt) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['healthDataConsentAt'],
+          message: 'healthDataConsentAt is required for patients',
+        });
+      }
       if (data.role === 'doctor') {
         if (!data.specialty) {
           ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['specialty'], message: 'specialty is required for doctors' });

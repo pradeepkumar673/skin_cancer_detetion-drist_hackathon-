@@ -97,6 +97,9 @@ export async function registerAccount(body) {
     phone: body.phone,
     languagePref: body.languagePref,
     isActive: true,
+    termsVersionAccepted: body.termsVersionAccepted,
+    termsAcceptedAt: body.termsAcceptedAt,
+    healthDataConsentAt: body.healthDataConsentAt,
   });
 
   try {

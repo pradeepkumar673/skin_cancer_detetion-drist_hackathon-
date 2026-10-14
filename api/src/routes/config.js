@@ -28,6 +28,7 @@ router.get('/public', (_req, res) => {
     organisationName: config.ORG_NAME || 'SkinSentry Health Support',
     contactEmail: config.CONTACT_EMAIL || 'support@skinsentry.local',
     governingLaw: config.GOVERNING_LAW || 'India',
+    minAge: config.MIN_AGE || 18,
     defaultTimezone: config.DEFAULT_TIMEZONE || 'Asia/Kolkata',
   });
 });

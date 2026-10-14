@@ -58,6 +58,9 @@ describe('Cases Module & Secure Uploads', () => {
         name: 'Patient One',
         role: 'patient',
         phone: '9876543210',
+        termsVersionAccepted: '1.0.0',
+        termsAcceptedAt: new Date().toISOString(),
+        healthDataConsentAt: new Date().toISOString(),
       });
     patient1User = p1Res.body.user;
 
@@ -75,6 +78,9 @@ describe('Cases Module & Secure Uploads', () => {
         name: 'Patient Two',
         role: 'patient',
         phone: '9876543212',
+        termsVersionAccepted: '1.0.0',
+        termsAcceptedAt: new Date().toISOString(),
+        healthDataConsentAt: new Date().toISOString(),
       });
     patient2User = p2Res.body.user;
 
