@@ -1,0 +1,169 @@
+{
+  "generated_at": "2026-10-14T11:28:21.940643+00:00",
+  "git_commit": "a4b243b1784133eeb88006c055635eff88813a35",
+  "backbone_id": "D:\\projects\\skin_cancer_detetion(drist_hackathon)\\models\\backbone\\dinov2_small",
+  "artifacts_count": 23,
+  "artifacts": [
+    {
+      "path": "models/backbone/dinov2-small/.cache/huggingface/.gitignore",
+      "size_bytes": 1,
+      "size_mb": 0.0,
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+      "updated_at": "2026-10-14T10:39:43.882890+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/.cache/huggingface/download/config.json.metadata",
+      "size_bytes": 104,
+      "size_mb": 0.0,
+      "sha256": "e1851923269b0534129b33e5b1ca1fe80ad8b270abb7c72af219636a295f51c7",
+      "updated_at": "2026-10-14T10:40:02.057795+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/.cache/huggingface/download/model.safetensors.lock",
+      "size_bytes": 0,
+      "size_mb": 0.0,
+      "sha256": "downloading",
+      "updated_at": "2026-10-14T10:39:56.246389+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/.cache/huggingface/download/preprocessor_config.json.metadata",
+      "size_bytes": 104,
+      "size_mb": 0.0,
+      "sha256": "bf635e209fa7e09cc2a2d622b2330b9f07f3c10a70ff5ad2ed3ce9d3cf9ab168",
+      "updated_at": "2026-10-14T10:39:59.696152+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/.cache/huggingface/download/README.md.metadata",
+      "size_bytes": 104,
+      "size_mb": 0.0,
+      "sha256": "7e2d15b9499971288cd70136f2bdcda39257327aa033cd5a0805db4943696416",
+      "updated_at": "2026-10-14T10:40:01.231681+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/.cache/huggingface/download/xGOKKLRSlIhH692hSVvI1-gpoa8=.ae1e99fcefd534ed978cdeb8326f08030c96e28b7a81ffcbc98a857c84d14be1.incomplete",
+      "size_bytes": 0,
+      "size_mb": 0.0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "updated_at": "2026-10-14T10:39:56.251075+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/config.json",
+      "size_bytes": 547,
+      "size_mb": 0.0,
+      "sha256": "1809f83e3bdb1609a501a610ad4a742f4fd8ae44d72ca4aa0df52d1f2ac8628d",
+      "updated_at": "2026-10-14T10:40:02.054453+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/preprocessor_config.json",
+      "size_bytes": 436,
+      "size_mb": 0.0,
+      "sha256": "14e780d86fa1861f8751f868d7f45425b5feb55c38ca26f152ca5097ab30f828",
+      "updated_at": "2026-10-14T10:39:59.694925+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2-small/README.md",
+      "size_bytes": 3033,
+      "size_mb": 0.0,
+      "sha256": "4c20dca454a8e5c670e8de5c7e6040f512aeca5438516f7623eedc4e3b00599c",
+      "updated_at": "2026-10-14T10:40:01.229269+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2_small/config.json",
+      "size_bytes": 547,
+      "size_mb": 0.0,
+      "sha256": "1809f83e3bdb1609a501a610ad4a742f4fd8ae44d72ca4aa0df52d1f2ac8628d",
+      "updated_at": "2026-10-14T11:26:56.886591+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2_small/model.safetensors",
+      "size_bytes": 6291456,
+      "size_mb": 6.0,
+      "sha256": "d38790b02350170b74fe39103fa54c0d115017640968f0e7f2e28d5b59160a8b",
+      "updated_at": "2026-10-14T11:28:14.350473+00:00"
+    },
+    {
+      "path": "models/backbone/dinov2_small/preprocessor_config.json",
+      "size_bytes": 436,
+      "size_mb": 0.0,
+      "sha256": "14e780d86fa1861f8751f868d7f45425b5feb55c38ca26f152ca5097ab30f828",
+      "updated_at": "2026-10-14T11:27:01.123471+00:00"
+    },
+    {
+      "path": "models/cancer/vit_skin_cancer/.gitattributes",
+      "size_bytes": 1519,
+      "size_mb": 0.0,
+      "sha256": "11ad7efa24975ee4b0c3c3a38ed18737f0658a5f75a0a96787b576a78a023361",
+      "updated_at": "2026-10-14T10:06:11.043051+00:00"
+    },
+    {
+      "path": "models/cancer/vit_skin_cancer/efficientnetv2s.h5",
+      "size_bytes": 247255104,
+      "size_mb": 235.8,
+      "sha256": "c269af96ad41247249607f48cf161c70efd0734b3df09300084b5f14c0824acf",
+      "updated_at": "2026-10-14T10:49:14.427956+00:00"
+    },
+    {
+      "path": "models/cancer/vit_skin_cancer/README.md",
+      "size_bytes": 2422,
+      "size_mb": 0.0,
+      "sha256": "0546f297ef2dbaeadea992d9b436ae6e2886b337a6e67e687584f482651e1d7b",
+      "updated_at": "2026-10-14T10:06:11.043051+00:00"
+    },
+    {
+      "path": "models/cancer/vit_skin_cancer/SOURCE.txt",
+      "size_bytes": 400,
+      "size_mb": 0.0,
+      "sha256": "94a6d749cc4e6bce8e8acd643d0e72a29bd5c1c563d937057a9f99baa4d426d3",
+      "updated_at": "2026-10-14T10:56:16.750128+00:00"
+    },
+    {
+      "path": "models/disease/dermnet_vit/model.safetensors",
+      "size_bytes": 30408704,
+      "size_mb": 29.0,
+      "sha256": "0ee4660c069676f1f99ba13a83ec64ee5d260eabb7f4ad45c9beabf8d483444c",
+      "updated_at": "2026-10-14T11:28:10.344014+00:00"
+    },
+    {
+      "path": "models/disease/dinov2_dermnet/.cache/huggingface/.gitignore",
+      "size_bytes": 1,
+      "size_mb": 0.0,
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+      "updated_at": "2026-10-14T11:09:44.824319+00:00"
+    },
+    {
+      "path": "models/disease/dinov2_dermnet/.cache/huggingface/download/config.json.metadata",
+      "size_bytes": 104,
+      "size_mb": 0.0,
+      "sha256": "28c77b920d3860c0044e8f698016379a18e9dccfe44ad2198fc0b0ae5a670bad",
+      "updated_at": "2026-10-14T11:09:56.044643+00:00"
+    },
+    {
+      "path": "models/disease/dinov2_dermnet/.cache/huggingface/download/model.safetensors.lock",
+      "size_bytes": 0,
+      "size_mb": 0.0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "updated_at": "2026-10-14T11:10:00.355262+00:00"
+    },
+    {
+      "path": "models/disease/dinov2_dermnet/.cache/huggingface/download/xGOKKLRSlIhH692hSVvI1-gpoa8=.64e13bff88b80cff4693d1bb29fb677356b49d6aafe9477ee9bee42e210862b0.incomplete",
+      "size_bytes": 0,
+      "size_mb": 0.0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "updated_at": "2026-10-14T11:10:00.355262+00:00"
+    },
+    {
+      "path": "models/disease/dinov2_dermnet/config.json",
+      "size_bytes": 6307,
+      "size_mb": 0.01,
+      "sha256": "a2a26f8ceb31ba1c01964dd7bfc278381505a3adff73379b0bbad2916f41d79e",
+      "updated_at": "2026-10-14T11:09:56.043590+00:00"
+    },
+    {
+      "path": "models/metrics/quality_gate.json",
+      "size_bytes": 1173,
+      "size_mb": 0.0,
+      "sha256": "83c6c870793336f7d68dcb7210c3390eaac2d8a18382798101dbd3e80d51ff80",
+      "updated_at": "2026-10-14T11:20:03.936154+00:00"
+    }
+  ]
+}

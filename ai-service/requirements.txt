@@ -14,3 +14,15 @@ httpx>=0.27.2,<1.0.0
 pytest>=8.3.3,<9.0.0
 pytest-asyncio>=0.24.0,<1.0.0
 structlog>=24.4.0,<25.0.0
+torch
+torchvision
+transformers
+timm
+segmentation-models-pytorch
+albumentations
+scikit-image
+scipy
+kaggle
+tqdm
+matplotlib
+pandas
