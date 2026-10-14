@@ -45,6 +45,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     scheduledAt: {
       type: Date,
+      index: true,
     },
     durationMin: {
       type: Number,
@@ -61,12 +62,36 @@ const appointmentSchema = new mongoose.Schema(
     confirmedAt: {
       type: Date,
     },
+    paymentDeadlineAt: {
+      type: Date,
+      index: true,
+    },
+    cancelledReason: {
+      type: String,
+      trim: true,
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     reminderSent: {
       h24: { type: Boolean, default: false },
       h1: { type: Boolean, default: false },
     },
   },
   { timestamps: true }
+);
+
+// Atomic double-booking protection: unique index for active slots
+appointmentSchema.index(
+  { doctorId: 1, scheduledAt: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $in: ['awaiting_payment', 'paid', 'in_progress'] },
+      scheduledAt: { $exists: true },
+    },
+  }
 );
 
 export const Appointment =

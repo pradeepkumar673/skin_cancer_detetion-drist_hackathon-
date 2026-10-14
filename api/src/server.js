@@ -19,7 +19,11 @@ import adminRoutes from './routes/admin.js';
 import doctorRoutes from './routes/doctors.js';
 import configRoutes from './routes/config.js';
 import casesRoutes from './routes/cases.js';
+import appointmentsRoutes from './routes/appointments.js';
+import consentsRoutes from './routes/consents.js';
 import { initSocket, resetDoctorPresence } from './services/socket.js';
+import { verifyMailer, getMailStatus } from './services/mailer.js';
+import { startCronJobs, stopCronJobs } from './services/cron.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,6 +74,8 @@ app.use('/admin', adminRoutes);
 app.use('/doctors', doctorRoutes);
 app.use('/config', configRoutes);
 app.use('/cases', casesRoutes);
+app.use('/appointments', appointmentsRoutes);
+app.use('/consents', consentsRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
@@ -77,6 +83,7 @@ app.get('/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     db: dbStatus,
+    mail: getMailStatus(),
     uptime: Math.floor(process.uptime()),
   });
 });
@@ -96,6 +103,8 @@ export async function startServer(port = config.PORT || 5000) {
     httpServer = http.createServer(app);
     initSocket(httpServer);
     await resetDoctorPresence();
+    await verifyMailer();
+    startCronJobs();
 
     serverInstance = httpServer.listen(port, () => {
       logger.info({ port, env: config.NODE_ENV }, `SkinSentry API server listening on port ${port}`);
@@ -103,6 +112,7 @@ export async function startServer(port = config.PORT || 5000) {
 
     const gracefulShutdown = async (signal) => {
       logger.info({ signal }, 'Graceful shutdown initiated');
+      stopCronJobs();
       if (serverInstance) {
         serverInstance.close(async () => {
           await disconnectDB();
