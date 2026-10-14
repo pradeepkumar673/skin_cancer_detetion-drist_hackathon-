@@ -1,0 +1,48 @@
+{
+  "evaluated_at": "2026-10-14T11:20:03.936153+00:00",
+  "sample_source": "dermatological_reference_calibration_set (n=200)",
+  "clean_samples": 200,
+  "false_reject_rate_pct": 9.5,
+  "overall_detection_rate_pct": 100.0,
+  "results_by_degradation_type": {
+    "blur_strong": {
+      "tested": 200,
+      "detected": 200,
+      "detection_rate_pct": 100.0
+    },
+    "blur_medium": {
+      "tested": 200,
+      "detected": 200,
+      "detection_rate_pct": 100.0
+    },
+    "too_dark": {
+      "tested": 200,
+      "detected": 200,
+      "detection_rate_pct": 100.0
+    },
+    "too_bright": {
+      "tested": 200,
+      "detected": 200,
+      "detection_rate_pct": 100.0
+    },
+    "low_contrast": {
+      "tested": 200,
+      "detected": 200,
+      "detection_rate_pct": 100.0
+    },
+    "low_resolution": {
+      "tested": 200,
+      "detected": 200,
+      "detection_rate_pct": 100.0
+    }
+  },
+  "thresholds": {
+    "min_blur_laplacian_var": 50.0,
+    "min_brightness_v": 35.0,
+    "max_brightness_v": 230.0,
+    "min_contrast_std": 18.2,
+    "min_width": 200,
+    "min_height": 200,
+    "fixed_resize_long_side": 512
+  }
+}

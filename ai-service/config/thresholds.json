@@ -1,9 +1,9 @@
 {
   "quality": {
-    "min_blur_laplacian_var": 45.0,
+    "min_blur_laplacian_var": 50.0,
     "min_brightness_v": 35.0,
     "max_brightness_v": 230.0,
-    "min_contrast_std": 18.0,
+    "min_contrast_std": 18.2,
     "min_width": 200,
     "min_height": 200,
     "fixed_resize_long_side": 512
@@ -16,8 +16,11 @@
   },
   "cancer": {
     "junior_a": {
-      "malignant_threshold": 0.40,
-      "patch_grid": [8, 8]
+      "malignant_threshold": 0.4,
+      "patch_grid": [
+        8,
+        8
+      ]
     },
     "risk_bands": {
       "low": 0.15,
@@ -29,10 +32,12 @@
     "min_wound_area_px": 50
   },
   "disease": {
-    "abstain_confidence": 0.40
+    "abstain_confidence": 0.4
   },
   "metadata": {
-    "computed_at": "2026-10-14T10:00:00Z",
-    "description": "Baseline clinical thresholds for SkinSentry screening gates"
+    "computed_at": "2026-10-14T11:20:03.936153+00:00",
+    "source": "dermatological_reference_calibration_set (n=200)",
+    "sample_size": 200,
+    "percentile_used": 5
   }
 }
