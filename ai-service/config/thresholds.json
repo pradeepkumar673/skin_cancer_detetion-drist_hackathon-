@@ -38,6 +38,12 @@
     "temperature": 0.2,
     "best_c": 0.01
   },
+  "junior_b": {
+    "min_alignment_quality": 0.40,
+    "min_other_lesions_ugly_duckling": 2,
+    "ugly_duckling_z_threshold": 1.5,
+    "evolution_alert_threshold": 0.45
+  },
   "metadata": {
     "computed_at": "2026-10-14T11:20:03.936153+00:00",
     "source": "dermatological_reference_calibration_set (n=200)",

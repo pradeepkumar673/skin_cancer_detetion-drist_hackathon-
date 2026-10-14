@@ -21,6 +21,12 @@ cancer:
   warning_signs:
     escalate_on_ugly_duckling: true
     escalate_on_rapid_evolution: true
+  evolution_weights:
+    # Heuristic clinical weights for longitudinal evolution score
+    area_weight: 0.35
+    color_weight: 0.25
+    border_weight: 0.20
+    embedding_weight: 0.20
 
 ulcer:
   healing_trajectory:
