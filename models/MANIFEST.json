@@ -2,7 +2,7 @@
   "generated_at": "2026-10-14T11:33:12.775103+00:00",
   "git_commit": "c22c6b0be20838410805dd0a83a931598b1e9d92",
   "backbone_id": "D:\\projects\\skin_cancer_detetion(drist_hackathon)\\models\\backbone\\dinov2_small",
-  "artifacts_count": 34,
+  "artifacts_count": 36,
   "artifacts": [
     {
       "path": "models/backbone/dinov2-small/.cache/huggingface/.gitignore",
@@ -247,7 +247,23 @@
       "sha256": "208327be054efed246f8e9eb58470fdc655118eeeb6e5e3c6c98209d290a2f27",
       "description": "Disease Junior A test metrics, top-3 accuracy, and selective prediction curve",
       "updated_at": "2026-10-14T11:55:43.942025+00:00"
+    },
+    {
+      "path": "models/cancer/senior_model.joblib",
+      "size_bytes": 1139924,
+      "size_mb": 1.09,
+      "sha256": "aab42c01512011ea01ca75e5dace7e177ec19f64c5747b4267ea964505072ae5",
+      "description": "Cancer Senior calibrated gradient boosted risk estimator with bootstrap ensemble",
+      "updated_at": "2026-10-14T12:05:48.917705+00:00"
+    },
+    {
+      "path": "models/metrics/cancer_senior.json",
+      "size_bytes": 817,
+      "size_mb": 0.0,
+      "sha256": "cd507a982682c9ffcfd4d2c1616c8345c69aa9087f8401c7c399f21d294450ab",
+      "description": "Cancer Senior test metrics, AUROC, AUPRC, and Brier score",
+      "updated_at": "2026-10-14T12:05:48.931713+00:00"
     }
   ],
-  "updated_at": "2026-10-14T11:55:43.942025+00:00"
+  "updated_at": "2026-10-14T12:05:48.931713+00:00"
 }
