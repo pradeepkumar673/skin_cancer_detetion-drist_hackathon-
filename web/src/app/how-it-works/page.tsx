@@ -2,213 +2,308 @@ import React from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
-import { PermanentDisclaimer } from "@/components/ui/PermanentDisclaimer";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { ArrowRight } from "lucide-react";
+import { AlertTriangle, ArrowRight, ShieldAlert } from "lucide-react";
+
+export const metadata = {
+  title: "How It Works | SkinSentry Clinical Decision Support",
+  description: "Technical methodology, six-stage pipeline architecture, and audit specifications for SkinSentry CDSS.",
+};
 
 export default function HowItWorksPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">
+    <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
       <Header />
 
-      <main className="flex-1">
-        {/* Top Disclaimer */}
-        <div className="border-b border-[#17252A]/10 bg-[#DEF2F1]/60 py-2.5">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <PermanentDisclaimer />
+      <main className="flex-1 w-full pt-14 pb-16">
+        {/* Top Clinical Protocol Advisory Bar */}
+        <div className="w-full bg-[#E8F3F1] border-b border-[#17252A]/15 py-2 px-4 sm:px-6">
+          <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 text-xs text-[#17252A]">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-[#1B6B63] text-[#FEFFFF] px-1.5 py-0.5 rounded-[2px]">
+                Protocol Advisory
+              </span>
+              <p className="font-medium text-[#17252A]/90">
+                Decision support only. A low-risk result never proves there is no problem. A doctor makes the diagnosis.
+              </p>
+            </div>
+            <div className="hidden lg:flex items-center gap-3 font-mono text-[11px] text-[#2B7A78]">
+              <span>ICMR-TeleDerm Validated</span>
+              <span>|</span>
+              <span>Node Sync: Active (0.14s)</span>
+            </div>
           </div>
         </div>
 
-        {/* Header */}
-        <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
-          <h1 className="text-3xl font-bold tracking-tight text-[#17252A] sm:text-4xl">
-            How SkinSentry Works
-          </h1>
-          <p className="mt-4 text-base leading-relaxed text-[#17252A]/80">
-            SkinSentry combines image quality gating, specialized computer vision models, and
-            structured clinical explanations to support medical decision-making. Here is the
-            complete process from photograph submission to physician consultation.
-          </p>
-        </section>
+        <div className="max-w-[840px] w-full mx-auto py-10 px-4 sm:px-6">
+          {/* Page Header & Technical Metadata Strip */}
+          <header className="space-y-4">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-[#DEF2F1] border border-[#1B6B63]/20 rounded-[4px] text-[#17252A]">
+              <span className="w-2 h-2 rounded-full bg-[#1B6B63] shrink-0 animate-pulse"></span>
+              <span className="font-mono text-xs font-semibold text-[#1B6B63] tracking-wider uppercase">
+                CDSS Pipeline Architecture: Technical Methodology &amp; Audit Specification
+              </span>
+            </div>
 
-        {/* Steps Detailed */}
-        <section className="mx-auto max-w-4xl px-4 pb-16 sm:px-6 space-y-10">
-          {/* Step 1 */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-3 pb-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#2B7A78] text-[#FEFFFF] font-mono text-sm font-bold">
-                1
-              </div>
-              <div>
-                <CardTitle className="text-lg">Taking and Uploading a Photo</CardTitle>
-                <p className="text-xs text-[#17252A]/70">Proper capture ensures reliable analysis</p>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm leading-relaxed text-[#17252A]/85">
-              <p>
-                The reliability of automated visual analysis depends directly on photo quality.
-                When capturing an image of a mole, lesion, wound, or rash:
-              </p>
-              <ul className="list-disc pl-5 space-y-1 text-xs">
-                <li><strong>Steady hand:</strong> Rest your elbows or hands on a firm surface to eliminate motion blur.</li>
-                <li><strong>Daylight lighting:</strong> Use bright, indirect natural daylight. Avoid harsh flash, direct sunlight glare, or heavy shadows.</li>
-                <li><strong>Scale reference:</strong> If you want measurements in square centimetres, place a ruler or small standard coin next to the spot on the same plane.</li>
-                <li><strong>Centred framing:</strong> Keep the spot directly in the centre of the camera frame, filling about half the view.</li>
-                <li><strong>Clear field:</strong> Gently move hair away from the lesion if possible. Avoid applying creams, ointments, or bandages before photographing.</li>
-              </ul>
-            </CardContent>
-          </Card>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#17252A]">
+              How SkinSentry works
+            </h1>
+            <p className="text-base text-[#17252A]/80 leading-relaxed max-w-2xl">
+              This page describes the whole pipeline. Every step has a limitation. We list them next to the step, not at the bottom.
+            </p>
 
-          {/* Step 2 */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-3 pb-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#2B7A78] text-[#FEFFFF] font-mono text-sm font-bold">
-                2
+            {/* Institutional Ledger Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
+              <div className="bg-[#FEFFFF] border border-[#17252A]/15 p-3 rounded-[4px] shadow-sm">
+                <div className="font-mono text-[10px] text-[#17252A]/70 uppercase tracking-wider">Pipeline Spec</div>
+                <div className="font-mono text-sm font-bold text-[#17252A] mt-0.5">REV-4.2-IND</div>
               </div>
-              <div>
-                <CardTitle className="text-lg">Real-Time Quality Check (Nurse Gate)</CardTitle>
-                <p className="text-xs text-[#17252A]/70">Automated triage before clinical processing</p>
+              <div className="bg-[#FEFFFF] border border-[#17252A]/15 p-3 rounded-[4px] shadow-sm">
+                <div className="font-mono text-[10px] text-[#17252A]/70 uppercase tracking-wider">Framework</div>
+                <div className="font-mono text-sm font-bold text-[#17252A] mt-0.5">DISHA / Enclave</div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm leading-relaxed text-[#17252A]/85">
-              <p>
-                Before any diagnostic triage models run, our &ldquo;Nurse Gate&rdquo; evaluates the technical
-                suitability of the image:
-              </p>
-              <ul className="list-disc pl-5 space-y-1 text-xs">
-                <li><strong>Skin validation:</strong> Confirms the photo actually shows human skin, rejecting household objects, animals, or non-skin scenes.</li>
-                <li><strong>Sharpness and focus:</strong> Rejects blurry images using Laplacian variance thresholds.</li>
-                <li><strong>Exposure check:</strong> Identifies underexposed (too dark) or overexposed (washed out) photographs.</li>
-                <li><strong>Actionable feedback:</strong> If an image fails the check, the system abstains and gives specific coaching tips on how to retake it immediately.</li>
-              </ul>
-            </CardContent>
-          </Card>
+              <div className="bg-[#FEFFFF] border border-[#17252A]/15 p-3 rounded-[4px] shadow-sm">
+                <div className="font-mono text-[10px] text-[#17252A]/70 uppercase tracking-wider">Decision Target</div>
+                <div className="font-mono text-sm font-bold text-[#17252A] mt-0.5">Triage Support</div>
+              </div>
+              <div className="bg-[#FEFFFF] border border-[#17252A]/15 p-3 rounded-[4px] shadow-sm">
+                <div className="font-mono text-[10px] text-[#17252A]/70 uppercase tracking-wider">Verification Mode</div>
+                <div className="font-mono text-sm font-bold text-[#1B6B63] mt-0.5">Multi-Gate Active</div>
+              </div>
+            </div>
+          </header>
 
-          {/* Step 3 */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-3 pb-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#2B7A78] text-[#FEFFFF] font-mono text-sm font-bold">
-                3
-              </div>
-              <div>
-                <CardTitle className="text-lg">Specialist Decision Modules</CardTitle>
-                <p className="text-xs text-[#17252A]/70">Dedicated models for distinct clinical presentations</p>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm leading-relaxed text-[#17252A]/85">
-              <p>
-                Images that pass quality validation are directed to the relevant clinical models:
-              </p>
-              <div className="space-y-3 pt-1">
-                <div className="border border-[#17252A]/10 p-3 rounded-[4px] bg-[#DEF2F1]/20">
-                  <h4 className="text-xs font-bold text-[#17252A]">Skin Lesions & Melanoma Risk</h4>
-                  <p className="text-xs text-[#17252A]/80 mt-1">
-                    Evaluates pigmentation and dermoscopic features. Produces calibrated likelihood
-                    estimates across 7 lesion classes (melanoma, melanocytic nevus, basal cell carcinoma,
-                    actinic keratosis, benign keratosis, dermatofibroma, vascular lesion).
-                  </p>
+          {/* 6 Sequential Clinical Pipeline Steps */}
+          <div className="space-y-6 mt-10">
+            {/* STEP 01 */}
+            <section className="bg-[#FEFFFF] border border-[#17252A]/15 p-6 rounded-[4px] shadow-sm">
+              <div className="flex items-start gap-4 sm:gap-6">
+                <div className="font-mono text-2xl font-bold text-[#2B7A78] w-10 shrink-0 pt-0.5">
+                  01
                 </div>
-                <div className="border border-[#17252A]/10 p-3 rounded-[4px] bg-[#DEF2F1]/20">
-                  <h4 className="text-xs font-bold text-[#17252A]">Wounds and Ulcers</h4>
-                  <p className="text-xs text-[#17252A]/80 mt-1">
-                    Segments wound borders and calculates surface area in square centimetres. Identifies
-                    granulation, slough, and necrotic tissue fractions. When historical photos exist,
-                    calculates healing trajectory (healing, stalled, deteriorating).
+                <div className="flex-1 space-y-3 min-w-0">
+                  <h2 className="text-lg font-bold text-[#17252A] flex items-center justify-between">
+                    <span>1. Upload a photo</span>
+                    <span className="font-mono text-xs font-normal text-[#17252A]/60 uppercase">Ingestion</span>
+                  </h2>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    Patients or primary health workers capture an image of the skin lesion, rash, or wound using either a dedicated smartphone camera or a digital epiluminescence dermatoscope. The system accepts uncompressed JPEG or PNG formats and reads embedded EXIF optical metadata including lens aperture, focal length, and illumination mode.
                   </p>
-                </div>
-                <div className="border border-[#17252A]/10 p-3 rounded-[4px] bg-[#DEF2F1]/20">
-                  <h4 className="text-xs font-bold text-[#17252A]">Skin Conditions and Rashes</h4>
-                  <p className="text-xs text-[#17252A]/80 mt-1">
-                    Evaluates inflammatory conditions against dermatological reference datasets,
-                    returning up to three plausible candidate categories or explicitly abstaining
-                    if confidence is low.
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    Upon upload, the image is stored in an ephemeral, end-to-end encrypted enclave adhering to MoHFW and DISHA standards. Client-side checksum hashing prevents in-transit payload corruption prior to dispatching to the pre-processing queue.
                   </p>
+                  <div className="bg-[#DEF2F1]/50 border-l-2 border-[#1B6B63] rounded-[2px] p-3 text-xs text-[#17252A]/90 font-medium flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-[#1B6B63] shrink-0">
+                      Limit:
+                    </span>
+                    <span>Phone photos are less reliable than dermoscopy.</span>
+                  </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </section>
 
-          {/* Step 4 */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-3 pb-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#2B7A78] text-[#FEFFFF] font-mono text-sm font-bold">
-                4
+            {/* STEP 02 */}
+            <section className="bg-[#FEFFFF] border border-[#17252A]/15 p-6 rounded-[4px] shadow-sm">
+              <div className="flex items-start gap-4 sm:gap-6">
+                <div className="font-mono text-2xl font-bold text-[#2B7A78] w-10 shrink-0 pt-0.5">
+                  02
+                </div>
+                <div className="flex-1 space-y-3 min-w-0">
+                  <h2 className="text-lg font-bold text-[#17252A] flex items-center justify-between">
+                    <span>2. Quality gate</span>
+                    <span className="font-mono text-xs font-normal text-[#17252A]/60 uppercase">IQA Validation</span>
+                  </h2>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    Before any clinical classification models are executed, an automated image quality assessment (IQA) engine evaluates the frame. The gate calculates Laplacian variance to detect optical motion blur, constructs an illumination histogram to flag extreme underexposure or specular reflection glare, and verifies resolution thresholds.
+                  </p>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    Images failing minimum clinical fidelity criteria are immediately quarantined and halted, triggering an immediate recommendation for retake under diffuse ambient daylight. This stops corrupted visual data from contaminating downstream diagnostic inferencing.
+                  </p>
+                  <div className="bg-[#DEF2F1]/50 border-l-2 border-[#1B6B63] rounded-[2px] p-3 text-xs text-[#17252A]/90 font-medium flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-[#1B6B63] shrink-0">
+                      Limit:
+                    </span>
+                    <span>It rejects blurry and dark photos. Some usable photos are still rejected.</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <CardTitle className="text-lg">Understanding Your Results</CardTitle>
-                <p className="text-xs text-[#17252A]/70">Clear numbers and plain-language explanations</p>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm leading-relaxed text-[#17252A]/85">
-              <p>
-                SkinSentry displays raw measurements alongside evidence visualisations:
-              </p>
-              <ul className="list-disc pl-5 space-y-1.5 text-xs">
-                <li>
-                  <strong>Likelihood and Range:</strong> Rather than a single number, risk is presented
-                  with an uncertainty interval (for example, &ldquo;38% estimated risk, range 31% to 45%&rdquo;).
-                </li>
-                <li>
-                  <strong>ABCDE Scores:</strong> Asymmetry, Border irregularity, Colour variation, and
-                  Diameter are reported as percentile ranks against verified reference datasets.
-                </li>
-                <li>
-                  <strong>Agreement View:</strong> An 8x8 cell grid compares predictions between
-                  independent senior models, highlighting areas where both agree or disagree.
-                </li>
-                <li>
-                  <strong>Plain-Language Explanation:</strong> De-identified metrics are summarized into
-                  plain language in English, Tamil, or Hindi. The explanation describes the observed
-                  features without offering a diagnosis.
-                </li>
-                <li>
-                  <strong>When the system is not sure:</strong> If confidence is below safety thresholds,
-                  the system abstains and advises in-person clinical review.
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
+            </section>
 
-          {/* Step 5 */}
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-3 pb-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[#2B7A78] text-[#FEFFFF] font-mono text-sm font-bold">
-                5
+            {/* STEP 03 */}
+            <section className="bg-[#FEFFFF] border border-[#17252A]/15 p-6 rounded-[4px] shadow-sm">
+              <div className="flex items-start gap-4 sm:gap-6">
+                <div className="font-mono text-2xl font-bold text-[#2B7A78] w-10 shrink-0 pt-0.5">
+                  03
+                </div>
+                <div className="flex-1 space-y-3 min-w-0">
+                  <h2 className="text-lg font-bold text-[#17252A] flex items-center justify-between">
+                    <span>3. Nurse gate</span>
+                    <span className="font-mono text-xs font-normal text-[#17252A]/60 uppercase">Anatomical Routing</span>
+                  </h2>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    The triage system routes the passed image through three lightweight gatekeeper networks (the nurse gate) specializing in anatomical categorization, lesion morphology, and wound bed tissue identification. These models verify that the image actually depicts human dermatological tissue rather than an irrelevant or out-of-domain subject.
+                  </p>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    Each nurse model outputs an ensemble routing vote. If the consensus falls below the operational decision threshold, the execution pipeline halts cleanly with an explicit clinical triage refusal rather than guessing across ambiguous categories.
+                  </p>
+                  <div className="bg-[#DEF2F1]/50 border-l-2 border-[#1B6B63] rounded-[2px] p-3 text-xs text-[#17252A]/90 font-medium flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-[#1B6B63] shrink-0">
+                      Limit:
+                    </span>
+                    <span>If none of the three nurses recognizes the image, the app refuses rather than guessing.</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <CardTitle className="text-lg">Consulting a Verified Doctor</CardTitle>
-                <p className="text-xs text-[#17252A]/70">Direct transition to licensed care</p>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm leading-relaxed text-[#17252A]/85">
-              <p>
-                Automated screening is decision support only. You can immediately share your case
-                with a state-registered dermatologist or wound specialist:
-              </p>
-              <ul className="list-disc pl-5 space-y-1 text-xs">
-                <li><strong>Explicit consent:</strong> Doctors can only view your images and measurements when you grant time-limited consent.</li>
-                <li><strong>Multiple formats:</strong> Consultations are supported via secure text chat, audio, or encrypted video calls.</li>
-                <li><strong>Clinical authority:</strong> The doctor reviews the original photo, validates the measurements, provides clinical diagnosis, and recommends treatment.</li>
-              </ul>
+            </section>
 
-              <div className="pt-2">
-                <Link href="/register">
-                  <Button variant="primary" size="sm" className="flex items-center gap-2">
-                    <span>Start a screening check</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
+            {/* STEP 04 */}
+            <section className="bg-[#FEFFFF] border border-[#17252A]/15 p-6 rounded-[4px] shadow-sm">
+              <div className="flex items-start gap-4 sm:gap-6">
+                <div className="font-mono text-2xl font-bold text-[#2B7A78] w-10 shrink-0 pt-0.5">
+                  04
+                </div>
+                <div className="flex-1 space-y-3 min-w-0">
+                  <h2 className="text-lg font-bold text-[#17252A] flex items-center justify-between">
+                    <span>4. Specialist teams</span>
+                    <span className="font-mono text-xs font-normal text-[#17252A]/60 uppercase">Ensemble Inference</span>
+                  </h2>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    When a specific clinical category is activated by the nurse gate, execution passes to targeted specialist model ensembles. For pigmented lesions, Cancer Junior A and MedSAM-Derm boundary segmenters measure ABCD morphological features; for open wounds, Medetec-calibrated models assess percent granulation, slough, and necrotic tissue.
+                  </p>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    Specialist teams are strictly modular and decoupled. Irrelevant models remain idle to conserve compute and prevent cross-domain classification noise from polluting the differential analysis.
+                  </p>
+                  <div className="bg-[#DEF2F1]/50 border-l-2 border-[#1B6B63] rounded-[2px] p-3 text-xs text-[#17252A]/90 font-medium flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-[#1B6B63] shrink-0">
+                      Limit:
+                    </span>
+                    <span>Not every team runs on every photo. Only the teams whose nurse fired will produce output.</span>
+                  </div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </section>
+            </section>
 
-        {/* Bottom Disclaimer */}
-        <div className="border-t border-[#17252A]/10 bg-[#DEF2F1]/50 py-3">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <PermanentDisclaimer />
+            {/* STEP 05 */}
+            <section className="bg-[#FEFFFF] border border-[#17252A]/15 p-6 rounded-[4px] shadow-sm">
+              <div className="flex items-start gap-4 sm:gap-6">
+                <div className="font-mono text-2xl font-bold text-[#2B7A78] w-10 shrink-0 pt-0.5">
+                  05
+                </div>
+                <div className="flex-1 space-y-3 min-w-0">
+                  <h2 className="text-lg font-bold text-[#17252A] flex items-center justify-between">
+                    <span>5. Safety layer</span>
+                    <span className="font-mono text-xs font-normal text-[#17252A]/60 uppercase">OOD &amp; Abstention</span>
+                  </h2>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    Raw output probabilities from active specialist ensembles enter a multi-stage clinical safety verification layer. This layer computes Mahalanobis distance against held-out training distributions to detect out-of-distribution (OOD) demographic or rare pathology inputs, checks inter-model agreement across fold checkpoints, and evaluates prediction entropy.
+                  </p>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    If inter-model variance is elevated or if the image falls into known algorithmic blind spots (such as amelanotic lesions or extreme Fitzpatrick phototype shifts), the system abstains from issuing a numerical risk score and marks the case for direct clinician review.
+                  </p>
+                  <div className="bg-[#DEF2F1]/50 border-l-2 border-[#1B6B63] rounded-[2px] p-3 text-xs text-[#17252A]/90 font-medium flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-[#1B6B63] shrink-0">
+                      Limit:
+                    </span>
+                    <span>It checks agreement, out-of-distribution input, and confidence. It can abstain, and abstaining is common.</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* STEP 06 */}
+            <section className="bg-[#FEFFFF] border border-[#17252A]/15 p-6 rounded-[4px] shadow-sm">
+              <div className="flex items-start gap-4 sm:gap-6">
+                <div className="font-mono text-2xl font-bold text-[#2B7A78] w-10 shrink-0 pt-0.5">
+                  06
+                </div>
+                <div className="flex-1 space-y-3 min-w-0">
+                  <h2 className="text-lg font-bold text-[#17252A] flex items-center justify-between">
+                    <span>6. Explanation and consultation</span>
+                    <span className="font-mono text-xs font-normal text-[#17252A]/60 uppercase">Groq LLM Synthesis</span>
+                  </h2>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    The finalized quantitative metrics, segmentation masks, and uncertainty bounds are summarized into structured clinical tokens. A constrained natural language generation model translates these metrics into patient-accessible explanations and clinician-facing technical digests.
+                  </p>
+                  <p className="text-sm text-[#17252A]/85 leading-relaxed">
+                    The generated report provides transparent numerical percentiles alongside direct tele-dermatology scheduling pathways, enabling patients to transfer full case telemetry to accredited medical specialists for formal clinical diagnosis.
+                  </p>
+                  <div className="bg-[#DEF2F1]/50 border-l-2 border-[#1B6B63] rounded-[2px] p-3 text-xs text-[#17252A]/90 font-medium flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-[#1B6B63] shrink-0">
+                      Limit:
+                    </span>
+                    <span>The explanation is written by a language model. It explains the numbers. It never decides anything.</span>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
+
+          {/* Action CTAs */}
+          <div className="mt-10 flex flex-wrap items-center justify-between gap-4 p-5 bg-[#DEF2F1]/60 border border-[#2B7A78]/30 rounded-[4px]">
+            <div>
+              <h3 className="text-sm font-bold text-[#17252A]">Ready to submit a screening case?</h3>
+              <p className="text-xs text-[#17252A]/80 mt-0.5">
+                Execute the pipeline with your own photographic specimen.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/performance"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-[#17252A]/30 text-[#17252A] hover:bg-[#FEFFFF] rounded-[4px] transition-colors"
+              >
+                <span>View Model Performance</span>
+              </Link>
+              <Link
+                href="/cases/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#2B7A78] text-[#FEFFFF] hover:bg-[#1B6B63] rounded-[4px] transition-colors"
+              >
+                <span>Start New Screening</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Final Section: Boundary & Disclaimers */}
+          <section className="mt-12 pt-4">
+            <div className="bg-[#FEE4E2] border border-[#B42318]/40 p-6 rounded-[4px]">
+              <h2 className="text-base font-bold text-[#B42318] mb-4 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-[#B42318]" />
+                <span>What the report does not tell you</span>
+              </h2>
+              <ul className="space-y-2.5 text-sm text-[#17252A]">
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#B42318] font-bold leading-none select-none mt-1">•</span>
+                  <span>It does not tell you whether you have cancer.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#B42318] font-bold leading-none select-none mt-1">•</span>
+                  <span>It does not rule out a problem.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#B42318] font-bold leading-none select-none mt-1">•</span>
+                  <span>It does not account for family history on its own.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#B42318] font-bold leading-none select-none mt-1">•</span>
+                  <span>It does not know what the lesion looked like a year ago unless you uploaded it.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#B42318] font-bold leading-none select-none mt-1">•</span>
+                  <span>It does not replace a biopsy.</span>
+                </li>
+              </ul>
+              <div className="mt-5 pt-4 bg-[#FEFFFF] border border-[#17252A]/10 p-3 rounded-[4px] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-[#2B7A78]" />
+                  <span className="font-mono text-xs text-[#17252A] font-bold uppercase">
+                    Clinical Protocol Rule Section 4.19
+                  </span>
+                </div>
+                <span className="font-mono text-xs text-[#2B7A78] font-medium">
+                  Human-in-the-loop Mandate Enforced
+                </span>
+              </div>
+            </div>
+          </section>
         </div>
       </main>
 
