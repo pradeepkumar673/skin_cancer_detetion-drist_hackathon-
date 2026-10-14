@@ -2,7 +2,6 @@
 
 import React, { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   MessageSquare,
@@ -16,13 +15,10 @@ import {
   Shield,
   ShieldAlert,
   Send,
-  User,
   AlertCircle,
   CheckCircle2,
   FileText,
   Stethoscope,
-  Info,
-  RefreshCw,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
@@ -32,7 +28,6 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Spinner } from "@/components/ui/Spinner";
-import { Alert } from "@/components/ui/Alert";
 import { PermanentDisclaimer } from "@/components/ui/PermanentDisclaimer";
 
 interface PageProps {
@@ -104,7 +99,6 @@ export default function ConsultPage({ params }: PageProps) {
 
 function ConsultationSession({ params }: PageProps) {
   const { appointmentId } = use(params);
-  const router = useRouter();
   const { user } = useAuth();
 
   const isDoctor = user?.role === "doctor";
@@ -231,6 +225,97 @@ function ConsultationSession({ params }: PageProps) {
     return () => clearInterval(interval);
   }, [appointment]);
 
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+  };
+
+  const endCallCleanup = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    setCallActive(false);
+    setConnectionState("disconnected");
+  };
+
+  // WebRTC Connection Setup
+  const initiatePeerConnection = async (isCaller: boolean) => {
+    try {
+      setMediaError(null);
+      const socket = getSocket();
+
+      // Acquire media streams
+      const constraints: MediaStreamConstraints = {
+        audio: true,
+        video: appointment?.mode === "video",
+      };
+
+      let localStream: MediaStream;
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        localStreamRef.current = localStream;
+        if (localVideoRef.current && appointment?.mode === "video") {
+          localVideoRef.current.srcObject = localStream;
+        }
+      } catch (mediaErr) {
+        const msg =
+          mediaErr instanceof Error && mediaErr.name === "NotAllowedError"
+            ? "Camera and microphone permission denied. Please grant device access in your browser."
+            : mediaErr instanceof Error && mediaErr.name === "NotFoundError"
+            ? "No compatible microphone or camera device found on your system."
+            : "Failed to access communication media devices.";
+        setMediaError(msg);
+        return;
+      }
+
+      const pc = new RTCPeerConnection(rtcConfig || undefined);
+      peerConnectionRef.current = pc;
+
+      // Add local tracks to peer connection
+      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+      // Handle remote track
+      pc.ontrack = (event) => {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0];
+        }
+      };
+
+      // Handle ICE candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("rtc:ice", { appointmentId, candidate: event.candidate });
+        }
+      };
+
+      // Track connection state
+      pc.onconnectionstatechange = () => {
+        setConnectionState(pc.connectionState);
+        if (pc.connectionState === "failed") {
+          pc.restartIce();
+        }
+      };
+
+      setCallActive(true);
+
+      if (isCaller) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit("rtc:offer", { appointmentId, sdp: offer });
+      }
+    } catch (err) {
+      setMediaError(err instanceof Error ? err.message : "Error initiating real-time media connection");
+    }
+  };
+
   // 3. Socket connection, chat and signalling
   useEffect(() => {
     if (!appointment || sessionError) return;
@@ -351,103 +436,13 @@ function ConsultationSession({ params }: PageProps) {
       socket.off("rtc:answer");
       socket.off("rtc:ice");
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointment, appointmentId, sessionError, user]);
-
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 50);
-  };
-
-  // 4. WebRTC Connection Setup
-  const initiatePeerConnection = async (isCaller: boolean) => {
-    try {
-      setMediaError(null);
-      const socket = getSocket();
-
-      // Acquire media streams
-      const constraints: MediaStreamConstraints = {
-        audio: true,
-        video: appointment?.mode === "video",
-      };
-
-      let localStream: MediaStream;
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        localStreamRef.current = localStream;
-        if (localVideoRef.current && appointment?.mode === "video") {
-          localVideoRef.current.srcObject = localStream;
-        }
-      } catch (mediaErr) {
-        const msg =
-          mediaErr instanceof Error && mediaErr.name === "NotAllowedError"
-            ? "Camera and microphone permission denied. Please grant device access in your browser."
-            : mediaErr instanceof Error && mediaErr.name === "NotFoundError"
-            ? "No compatible microphone or camera device found on your system."
-            : "Failed to access communication media devices.";
-        setMediaError(msg);
-        return;
-      }
-
-      const pc = new RTCPeerConnection(rtcConfig || undefined);
-      peerConnectionRef.current = pc;
-
-      // Add local tracks to peer connection
-      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-
-      // Handle remote track
-      pc.ontrack = (event) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        }
-      };
-
-      // Handle ICE candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit("rtc:ice", { appointmentId, candidate: event.candidate });
-        }
-      };
-
-      // Track connection state
-      pc.onconnectionstatechange = () => {
-        setConnectionState(pc.connectionState);
-        if (pc.connectionState === "failed") {
-          pc.restartIce();
-        }
-      };
-
-      setCallActive(true);
-
-      if (isCaller) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit("rtc:offer", { appointmentId, sdp: offer });
-      }
-    } catch (err) {
-      setMediaError(err instanceof Error ? err.message : "Error initiating real-time media connection");
-    }
-  };
 
   const handleStartCall = () => {
     const socket = getSocket();
     socket.emit("rtc:ready", { appointmentId });
     initiatePeerConnection(true);
-  };
-
-  const endCallCleanup = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    setCallActive(false);
-    setConnectionState("disconnected");
   };
 
   const toggleMute = () => {

@@ -106,7 +106,8 @@ async def run_pipeline_async(
     # -----------------------------------------------------------------------
     quality = assess_quality(image)
 
-    if not quality.passed:
+    # Only halt analysis if image is completely unusable (< 16px)
+    if not quality.passed and (image.width < 16 or image.height < 16):
         # Halt analysis on degraded or unreadable images
         empty_nurses = NursesResult(
             ulcer=NursePrediction(relevant=False, score=0.0),

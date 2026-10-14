@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Calendar,
   Clock,
@@ -12,7 +13,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from "lucide-react";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -49,7 +50,8 @@ const WEEKDAYS = [
 ];
 
 export default function DoctorAvailabilityPage() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [weeklyRanges, setWeeklyRanges] = useState<AvailabilityRange[]>([]);
   const [exceptions, setExceptions] = useState<string[]>([]);
   const [timezone, setTimezone] = useState<string>("Asia/Kolkata");
@@ -64,6 +66,12 @@ export default function DoctorAvailabilityPage() {
   const [newExceptionDate, setNewExceptionDate] = useState<string>("");
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+
     let mounted = true;
 
     async function loadAvailability() {
@@ -79,6 +87,10 @@ export default function DoctorAvailabilityPage() {
         }
       } catch (err) {
         if (mounted) {
+          if (err instanceof ApiError && err.statusCode === 401) {
+            router.push("/login");
+            return;
+          }
           setError(err instanceof Error ? err.message : "Failed to load schedule");
         }
       } finally {
@@ -93,7 +105,7 @@ export default function DoctorAvailabilityPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [authLoading, isAuthenticated, router]);
 
   const addRange = (weekday: number) => {
     setWeeklyRanges((prev) => [
@@ -188,12 +200,16 @@ export default function DoctorAvailabilityPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
         <Spinner size="lg" />
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   if (!isVerified || user?.verificationStatus === "pending") {

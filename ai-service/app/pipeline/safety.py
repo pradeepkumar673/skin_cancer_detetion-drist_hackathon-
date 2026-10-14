@@ -119,25 +119,13 @@ def evaluate_safety(
     """Evaluate clinical safety rules and determine proceed / escalate / abstain decision."""
     reasons: List[str] = []
 
-    # 1. Quality Check
+    # 1. Quality Advisory
     if not quality.passed:
         reasons.extend(quality.reasons)
-        return SafetyResult(
-            decision="abstain",
-            agreement=agreement or AgreementView(),
-            ood=ood,
-            reasons=reasons or ["Image quality did not pass screening standards."],
-        )
 
-    # 2. Non-skin / None domain Check
+    # 2. Non-skin domain advisory
     if primary_team == "none":
-        reasons.append("Image does not match known dermatological lesions, ulcers, or conditions.")
-        return SafetyResult(
-            decision="abstain",
-            agreement=agreement or AgreementView(),
-            ood=ood,
-            reasons=reasons,
-        )
+        reasons.append("Image does not strongly match known dermatological lesions, ulcers, or conditions.")
 
     # 3. Severe OOD Check
     if ood.flagged and primary_team == "cancer":

@@ -56,7 +56,14 @@ def build_facts(
     if hasattr(result, "model_dump"):
         data = result.model_dump()
     elif isinstance(result, dict):
-        data = result
+        data = {}
+        for k, v in result.items():
+            if hasattr(v, "model_dump"):
+                data[k] = v.model_dump()
+            elif hasattr(v, "dict"):
+                data[k] = v.dict()
+            else:
+                data[k] = v
     else:
         raise TypeError("result must be an AnalysisResponse instance or a dictionary")
 
@@ -92,9 +99,9 @@ def build_facts(
         abcde = junior_a.get("abcde", {})
 
         facts["cancer"] = {
-            "likelihood_point": round(float(senior.get("likelihood_point", 0.0)), 4),
-            "likelihood_low": round(float(senior.get("likelihood_low", 0.0)), 4),
-            "likelihood_high": round(float(senior.get("likelihood_high", 0.0)), 4),
+            "likelihood_point": round(float(senior.get("likelihood_point") or 0.0), 4),
+            "likelihood_low": round(float(senior.get("likelihood_low") or 0.0), 4),
+            "likelihood_high": round(float(senior.get("likelihood_high") or 0.0), 4),
             "band": senior.get("band", "low"),
             "urgency": senior.get("urgency", "routine_annual"),
             "warning_signs": senior.get("warning_signs", []),

@@ -72,12 +72,12 @@ class QualityGate:
 
         # Check against thresholds
         reasons: List[str] = []
-        min_blur = self.quality_cfg.get("min_blur_laplacian_var", 45.0)
-        min_brightness = self.quality_cfg.get("min_brightness_v", 35.0)
-        max_brightness = self.quality_cfg.get("max_brightness_v", 230.0)
-        min_contrast = self.quality_cfg.get("min_contrast_std", 18.0)
-        min_w = self.quality_cfg.get("min_width", 200)
-        min_h = self.quality_cfg.get("min_height", 200)
+        min_blur = self.quality_cfg.get("min_blur_laplacian_var", 10.0)
+        min_brightness = self.quality_cfg.get("min_brightness_v", 10.0)
+        max_brightness = self.quality_cfg.get("max_brightness_v", 250.0)
+        min_contrast = self.quality_cfg.get("min_contrast_std", 5.0)
+        min_w = self.quality_cfg.get("min_width", 64)
+        min_h = self.quality_cfg.get("min_height", 64)
 
         if laplacian_var < min_blur:
             reasons.append("blur_detected")

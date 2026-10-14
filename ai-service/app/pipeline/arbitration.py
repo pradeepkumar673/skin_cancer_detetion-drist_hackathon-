@@ -32,11 +32,18 @@ def arbitrate_teams(
     ]
 
     if not relevant_teams:
+        # Default to highest-confidence domain rather than abstaining
+        best_team = max(
+            nurse_activations.keys(),
+            key=lambda t: float(nurse_activations.get(t, {}).get("score", 0.0)),
+            default="cancer",
+        )
+        best_score = float(nurse_activations.get(best_team, {}).get("score", 0.0))
         return ArbitrationResult(
-            primary_team="none",
+            primary_team=best_team,
             secondary_teams=[],
             notes=[
-                "Visual features do not match known dermatological lesions, ulcers, or conditions with sufficient clinical confidence."
+                f"Evaluated through '{best_team}' pathway based on visual resemblance ({best_score:.2f})."
             ],
         )
 

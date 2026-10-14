@@ -41,7 +41,7 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { FormField } from "@/components/ui/FormField";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { getSocket } from "@/lib/socket";
 
@@ -52,6 +52,7 @@ interface CaseDetails {
   bodySite: string;
   lesionLabel?: string;
   status: "queued" | "processing" | "completed" | "failed" | "abstained";
+  analysisId?: unknown;
   imagePaths: Array<{ path: string; kind: string; takenAt: string }>;
   context: {
     skinType?: string;
@@ -73,6 +74,16 @@ interface CaseDetails {
 
 interface AnalysisData {
   _id: string;
+  quality?: {
+    passed: boolean;
+    blur?: number;
+    brightness?: number;
+    contrast?: number;
+    width?: number;
+    height?: number;
+    reasons?: string[];
+    coach_tips?: string[];
+  };
   safety?: {
     decision: "proceed" | "escalate" | "abstain";
     reasons: string[];
@@ -204,24 +215,32 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
     }>(`/cases/${caseId}`)
       .then((res) => {
         setCaseDoc(res.case);
-        if (res.analysis) setAnalysis(res.analysis);
+        const resolved =
+          res.analysis ||
+          (res.case?.analysisId as unknown as { result?: AnalysisData })?.result ||
+          (res.case?.analysisId as unknown as AnalysisData);
+        if (resolved) setAnalysis(resolved);
         if (res.woundHistory) setWoundHistory(res.woundHistory);
         setLoading(false);
       })
       .catch((err: unknown) => {
+        if (err instanceof ApiError && err.statusCode === 401) {
+          router.push("/login");
+          return;
+        }
         setError(err instanceof Error ? err.message : "Failed to load case data.");
         setLoading(false);
       });
-  }, [caseId]);
+  }, [caseId, router]);
 
   // Initial load and WebSocket live updates
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (authLoading) return;
+    if (!isAuthenticated) {
       router.push("/login");
       return;
     }
-    if (isAuthenticated) {
-      fetchCase();
+    fetchCase();
 
       // Connect socket for real-time status transitions
       const socket = getSocket();
@@ -248,7 +267,6 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
         socket.off("case:update", onCaseUpdate);
         clearInterval(interval);
       };
-    }
   }, [authLoading, isAuthenticated, fetchCase, caseId, caseDoc, router]);
 
   // Load explanation on language change or when analysis completes
@@ -331,7 +349,7 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
     }
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">
         <Header />
@@ -342,6 +360,10 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
         <Footer />
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   if (error || !caseDoc) {
@@ -467,26 +489,43 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
                   Our Nurse Gate determined that this photograph does not meet the minimum technical
                   quality standards required for reliable clinical assessment.
                 </p>
-                {analysis?.safety?.reasons && analysis.safety.reasons.length > 0 && (
+
+                {((analysis?.quality?.reasons && analysis.quality.reasons.length > 0) ||
+                  (analysis?.safety?.reasons && analysis.safety.reasons.length > 0)) && (
                   <div>
                     <strong className="text-[#17252A]">Identified Issues:</strong>
                     <ul className="list-disc pl-5 mt-1 space-y-0.5">
-                      {analysis.safety.reasons.map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
+                      {(analysis?.quality?.reasons || analysis?.safety?.reasons || []).map((r, i) => {
+                        let text = r;
+                        if (r === "resolution_too_low") {
+                          text = `Image resolution is too low (${analysis?.quality?.width || "?"} × ${analysis?.quality?.height || "?"}px). Minimum required is 200 × 200px.`;
+                        } else if (r === "blur_detected") {
+                          text = "Image is too blurry for reliable clinical screening.";
+                        } else if (r === "too_dark") {
+                          text = "Image is too dark to resolve lesion pigmentation.";
+                        } else if (r === "too_bright") {
+                          text = "Image is too bright or washed out.";
+                        } else if (r === "low_contrast") {
+                          text = "Contrast between the skin lesion and surrounding tissue is too low.";
+                        }
+                        return <li key={i}>{text}</li>;
+                      })}
                     </ul>
                   </div>
                 )}
-                {analysis?.safety?.coachTips && analysis.safety.coachTips.length > 0 && (
+
+                {((analysis?.quality?.coach_tips && analysis.quality.coach_tips.length > 0) ||
+                  (analysis?.safety?.coachTips && analysis.safety.coachTips.length > 0)) && (
                   <div className="mt-2 border-t border-[#8A5A00]/20 pt-2">
                     <strong className="text-[#17252A]">How to Retake This Photo:</strong>
                     <ul className="list-disc pl-5 mt-1 space-y-0.5">
-                      {analysis.safety.coachTips.map((tip, i) => (
+                      {(analysis?.quality?.coach_tips || analysis?.safety?.coachTips || []).map((tip, i) => (
                         <li key={i}>{tip}</li>
                       ))}
                     </ul>
                   </div>
                 )}
+
                 <div className="pt-2">
                   <Link href="/cases/new">
                     <Button variant="primary" size="sm">

@@ -247,13 +247,16 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (user?.role === "admin") {
-      if (activeTab === "doctors") fetchDoctors();
-      if (activeTab === "users") fetchUsers();
-      if (activeTab === "payments") fetchPayments();
-      if (activeTab === "emails") fetchEmails();
-      if (activeTab === "audit") fetchAudits();
-      if (activeTab === "jobs") fetchJobs();
+      void Promise.resolve().then(() => {
+        if (activeTab === "doctors") fetchDoctors();
+        if (activeTab === "users") fetchUsers();
+        if (activeTab === "payments") fetchPayments();
+        if (activeTab === "emails") fetchEmails();
+        if (activeTab === "audit") fetchAudits();
+        if (activeTab === "jobs") fetchJobs();
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, user?.role, doctorFilter, userPage, userRole, paymentPage, paymentStatus, emailPage, emailStatus]);
 
   // Doctor Action

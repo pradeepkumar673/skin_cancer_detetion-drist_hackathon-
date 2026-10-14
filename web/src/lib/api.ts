@@ -41,6 +41,11 @@ export async function apiClient<T = unknown>(endpoint: string, options: RequestO
   const url = `${API_BASE.replace(/\/+$/, "")}/${endpoint.replace(/^\/+/, "")}`;
   const headers = new Headers(options.headers || {});
 
+  // If request requires authentication and access token is absent, attempt refresh first
+  if (!options.skipAuth && !inMemoryAccessToken && !endpoint.includes("/auth/")) {
+    await refreshAccessToken();
+  }
+
   if (!options.skipAuth && inMemoryAccessToken) {
     headers.set("Authorization", `Bearer ${inMemoryAccessToken}`);
   }
@@ -86,24 +91,47 @@ export async function apiClient<T = unknown>(endpoint: string, options: RequestO
   return response.text() as unknown as T;
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  try {
-    const resp = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.accessToken) {
-        setAccessToken(data.accessToken);
-        return data.accessToken;
-      }
-    }
-  } catch {
-    // refresh failed
+export interface SessionResponse {
+  accessToken: string;
+  user: Record<string, unknown>;
+  verificationStatus?: string;
+}
+
+let sessionPromise: Promise<SessionResponse | null> | null = null;
+
+export async function refreshSession(): Promise<SessionResponse | null> {
+  if (sessionPromise) {
+    return sessionPromise;
   }
-  setAccessToken(null);
-  return null;
+
+  sessionPromise = (async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data?.accessToken) {
+          setAccessToken(data.accessToken);
+          return data as SessionResponse;
+        }
+      }
+    } catch {
+      // refresh failed
+    } finally {
+      sessionPromise = null;
+    }
+    setAccessToken(null);
+    return null;
+  })();
+
+  return sessionPromise;
+}
+
+export async function refreshAccessToken(): Promise<string | null> {
+  const session = await refreshSession();
+  return session?.accessToken || null;
 }
 
 async function handleError(response: Response): Promise<never> {

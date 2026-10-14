@@ -13,7 +13,8 @@ import { FormField } from "@/components/ui/FormField";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
-import { apiClient } from "@/lib/api";
+import { Spinner } from "@/components/ui/Spinner";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Camera, AlertCircle, ArrowLeft, Info } from "lucide-react";
 
@@ -56,7 +57,8 @@ export default function NewCasePage() {
   const [serverError, setServerError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (authLoading) return;
+    if (!isAuthenticated) {
       router.push("/login");
       return;
     }
@@ -125,6 +127,10 @@ export default function NewCasePage() {
 
       router.push(`/cases/${res.case._id}`);
     } catch (err: unknown) {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        router.push("/login");
+        return;
+      }
       if (err instanceof Error) {
         setServerError(err.message);
       } else {
@@ -134,6 +140,22 @@ export default function NewCasePage() {
       setSubmitting(false);
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">
+        <Header />
+        <main className="flex-1 flex items-center justify-center py-20">
+          <Spinner size="lg" />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">

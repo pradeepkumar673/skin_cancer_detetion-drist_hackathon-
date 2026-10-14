@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { apiClient, setAccessToken } from "@/lib/api";
+import { apiClient, setAccessToken, refreshSession } from "@/lib/api";
 import { disconnectSocket } from "@/lib/socket";
 
 export interface PatientProfile {
@@ -55,24 +55,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const data = await apiClient<{
-        accessToken: string;
-        user: UserProfile;
-        verificationStatus?: string;
-      }>("/auth/refresh", {
-        method: "POST",
-        skipAuth: true,
-      });
-
-      if (data?.accessToken && data?.user) {
-        setAccessToken(data.accessToken);
+      const data = await refreshSession();
+      if (data?.user) {
         setUser({
-          ...data.user,
+          ...(data.user as unknown as UserProfile),
           verificationStatus: data.verificationStatus,
         });
+      } else {
+        setUser(null);
       }
     } catch {
-      setAccessToken(null);
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -81,7 +73,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Attempt silent refresh on initial mount
   useEffect(() => {
-    refreshUser();
+    let mounted = true;
+    refreshSession()
+      .then((data) => {
+        if (!mounted) return;
+        if (data?.user) {
+          setUser({
+            ...(data.user as unknown as UserProfile),
+            verificationStatus: data.verificationStatus,
+          });
+        } else {
+          setUser(null);
+        }
+        setIsLoading(false);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setUser(null);
+        setIsLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<UserProfile> => {

@@ -106,10 +106,6 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
     doctorDoc.verificationStatus = 'verified';
     await doctorDoc.save();
 
-    const dLogin = await request(app)
-      .post('/auth/login')
-      .send({ email: 'dr.priya@hospital.com', password: 'Password123!' });
-    // Or login with correct email
     const dLoginReal = await request(app)
       .post('/auth/login')
       .send({ email: 'dr.nair@example.com', password: 'Password123!' });
@@ -279,11 +275,19 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
         auth: { token: outsiderToken },
         transports: ['websocket'],
         forceNew: true,
+        multiplex: false,
       });
 
       await new Promise((resolve, reject) => {
-        clientSocket.on('connect', resolve);
-        clientSocket.on('connect_error', reject);
+        const timer = setTimeout(() => reject(new Error('Socket connect timeout')), 5000);
+        clientSocket.on('connect', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        clientSocket.on('connect_error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
       });
 
       const ackRes = await new Promise((resolve) => {
@@ -293,6 +297,7 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
       expect(ackRes.code).toBe('unauthorized');
 
       clientSocket.disconnect();
+      clientSocket.close();
     });
 
     it('rejects participant joining outside scheduled time window', async () => {
@@ -310,20 +315,33 @@ describe('Real-time Consultations, WebRTC & Consent-Based Case Sharing (Step 24)
         auth: { token: patientToken },
         transports: ['websocket'],
         forceNew: true,
+        multiplex: false,
       });
 
       await new Promise((resolve, reject) => {
-        clientSocket.on('connect', resolve);
-        clientSocket.on('connect_error', reject);
+        const timer = setTimeout(() => reject(new Error('Socket connect timeout')), 5000);
+        clientSocket.on('connect', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        clientSocket.on('connect_error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
       });
 
-      const ackRes = await new Promise((resolve) => {
-        clientSocket.emit('chat:join', { appointmentId: String(appointment._id) }, resolve);
+      const ackRes = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('chat:join callback timed out')), 5000);
+        clientSocket.emit('chat:join', { appointmentId: String(appointment._id) }, (res) => {
+          clearTimeout(timer);
+          resolve(res);
+        });
       });
 
       expect(ackRes.code).toBe('outside_window');
 
       clientSocket.disconnect();
+      clientSocket.close();
     });
 
     it('transitions status to in_progress when both join, persists chat, and relays WebRTC signalling', async () => {

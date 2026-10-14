@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Stethoscope,
   Radio,
@@ -9,13 +10,11 @@ import {
   Calendar,
   Clock,
   Coins,
-  FileText,
   AlertCircle,
   ShieldAlert,
   CheckCircle2,
-  Users,
 } from "lucide-react";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -52,7 +51,8 @@ interface AppointmentItem {
 }
 
 export default function DoctorDashboardPage() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [doctorData, setDoctorData] = useState<DoctorDashboardData | null>(null);
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -62,6 +62,12 @@ export default function DoctorDashboardPage() {
 
   // Load doctor profile and appointments
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+
     let mounted = true;
 
     async function loadData() {
@@ -88,6 +94,10 @@ export default function DoctorDashboardPage() {
         }
       } catch (err) {
         if (mounted) {
+          if (err instanceof ApiError && err.statusCode === 401) {
+            router.push("/login");
+            return;
+          }
           // If 403 with doctor_not_verified, show awaiting screen
           setError(err instanceof Error ? err.message : "Failed to load dashboard data");
         }
@@ -103,7 +113,7 @@ export default function DoctorDashboardPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [authLoading, isAuthenticated, router]);
 
   const handlePresenceToggle = async (mode: "auto" | "offline") => {
     try {
@@ -132,12 +142,16 @@ export default function DoctorDashboardPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
         <Spinner size="lg" />
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   // 1. Unverified doctor screen
@@ -302,7 +316,7 @@ export default function DoctorDashboardPage() {
               <CardTitle className="text-sm font-bold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-[#2B7A78]" />
-                  <span>Today's Confirmed Consultations</span>
+                  <span>Today&apos;s Confirmed Consultations</span>
                 </div>
                 <span className="text-xs font-mono font-normal text-[#17252A]/60">
                   {todayAppointments.length} scheduled
@@ -371,7 +385,7 @@ export default function DoctorDashboardPage() {
                         </div>
                         {appt.note && (
                           <p className="text-[11px] text-[#17252A]/80 italic mt-0.5 max-w-xs truncate">
-                            "{appt.note}"
+                            &ldquo;{appt.note}&rdquo;
                           </p>
                         )}
                       </div>

@@ -2,18 +2,16 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Coins,
-  MessageSquare,
-  Phone,
-  Video,
   ArrowLeft,
   ShieldAlert,
   AlertCircle,
   CheckCircle2,
   Info,
 } from "lucide-react";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -38,7 +36,8 @@ const MIN_FEE_INR = 100;
 const MAX_FEE_INR = 5000;
 
 export default function DoctorFeesPage() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [chatFee, setChatFee] = useState<string>("300");
   const [audioFee, setAudioFee] = useState<string>("500");
   const [videoFee, setVideoFee] = useState<string>("800");
@@ -50,6 +49,12 @@ export default function DoctorFeesPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+
     let mounted = true;
 
     async function loadFees() {
@@ -67,6 +72,10 @@ export default function DoctorFeesPage() {
         }
       } catch (err) {
         if (mounted) {
+          if (err instanceof ApiError && err.statusCode === 401) {
+            router.push("/login");
+            return;
+          }
           setError(err instanceof Error ? err.message : "Failed to load fee configuration");
         }
       } finally {
@@ -81,7 +90,7 @@ export default function DoctorFeesPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [authLoading, isAuthenticated, router]);
 
   const validateFee = (val: string, label: string): number | null => {
     const num = Number(val);
@@ -129,12 +138,16 @@ export default function DoctorFeesPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
         <Spinner size="lg" />
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   if (!isVerified || user?.verificationStatus === "pending") {

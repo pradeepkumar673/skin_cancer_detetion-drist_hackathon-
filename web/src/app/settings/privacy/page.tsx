@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Shield,
   Download,
@@ -10,8 +11,6 @@ import {
   CheckCircle2,
   Lock,
   ArrowLeft,
-  XCircle,
-  FileText,
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { PermanentDisclaimer } from "@/components/ui/PermanentDisclaimer";
@@ -31,6 +30,7 @@ interface ConsentItem {
 }
 
 export default function PrivacySettingsPage() {
+  const router = useRouter();
   const { user, refreshUser, logout } = useAuth();
 
   const [consents, setConsents] = useState<ConsentItem[]>([]);
@@ -71,22 +71,14 @@ export default function PrivacySettingsPage() {
     setExportLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/me/export", {
+      const data = await apiClient<Record<string, unknown>>("/me/export", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        credentials: "include",
         body: JSON.stringify({ password: exportPassword }),
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to authenticate export request");
-      }
-
-      const blob = await res.blob();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -100,7 +92,7 @@ export default function PrivacySettingsPage() {
       setExportPassword("");
       setStatusMessage("Personal data archive downloaded successfully.");
     } catch (err: unknown) {
-      setExportError(err instanceof Error ? err.message : "Failed to export data");
+      setExportError(err instanceof Error ? err.message : "Failed to generate personal data export");
     } finally {
       setExportLoading(false);
     }
@@ -119,7 +111,7 @@ export default function PrivacySettingsPage() {
       setDeleteModalOpen(false);
       setDeletePassword("");
       await logout();
-      window.location.href = "/login?notice=deletion_requested";
+      router.push("/login?notice=deletion_requested");
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Failed to schedule account deletion");
     } finally {

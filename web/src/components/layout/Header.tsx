@@ -46,14 +46,19 @@ export function Header() {
     <header className="sticky top-0 z-40 w-full border-b border-[#17252A]/15 bg-[#FEFFFF]">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-6">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-base font-bold tracking-tight text-[#17252A] hover:text-[#2B7A78]"
-          >
-            <span className="border-b-2 border-[#2B7A78] pb-0.5">SkinSentry</span>
-          </Link>
+          <div className="flex items-center">
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-base font-bold tracking-tight text-[#17252A] hover:text-[#2B7A78]"
+            >
+              <span className="border-b-2 border-[#1B6B63] pb-[2px] text-[17px] font-semibold text-[#0E1F1E]">SkinSentry</span>
+            </Link>
+            <span className="ml-3 px-1.5 py-0.5 text-[11px] font-mono tracking-wider text-[#5A6B69] border border-[#D8DDDB] bg-[#FFFFFF] rounded-[2px] uppercase">
+              CDS-v2.4
+            </span>
+          </div>
 
-          <nav className="hidden md:flex items-center gap-4 text-sm">
+          <nav className="hidden md:flex items-center gap-6 text-sm">
             {navLinks.map((link) => {
               const active = pathname === link.href;
               return (
@@ -62,8 +67,8 @@ export function Header() {
                   href={link.href}
                   className={`transition-colors duration-150 py-1 ${
                     active
-                      ? "border-b-2 border-[#2B7A78] font-semibold text-[#2B7A78]"
-                      : "text-[#17252A]/70 hover:text-[#17252A]"
+                      ? "border-b-2 border-[#1B6B63] font-semibold text-[#1B6B63]"
+                      : "text-[#5A6B69] hover:text-[#0E1F1E]"
                   }`}
                 >
                   {link.label}
@@ -77,11 +82,16 @@ export function Header() {
           {isAuthenticated && user ? (
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-semibold text-[#17252A]">{user.name}</span>
-                <span className="text-[10px] uppercase font-mono tracking-wider text-[#17252A]/60">
+                <span className="text-xs font-semibold text-[#0E1F1E]">{user.name}</span>
+                <span className="text-[10px] uppercase font-mono tracking-wider text-[#5A6B69]">
                   {user.role}
                 </span>
               </div>
+              <Link href="/cases/new">
+                <Button variant="primary" size="sm">
+                  Start a check
+                </Button>
+              </Link>
               <Button
                 variant="secondary"
                 size="sm"
@@ -93,15 +103,15 @@ export function Header() {
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Link href="/login">
                 <Button variant="text" size="sm">
                   Log in
                 </Button>
               </Link>
-              <Link href="/register">
+              <Link href="/cases/new">
                 <Button variant="primary" size="sm">
-                  Register
+                  Start a check
                 </Button>
               </Link>
             </div>

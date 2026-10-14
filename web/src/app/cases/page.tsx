@@ -11,7 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Spinner } from "@/components/ui/Spinner";
 import { Alert } from "@/components/ui/Alert";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PlusCircle, Calendar, Tag, MapPin, ArrowRight } from "lucide-react";
 
@@ -43,19 +43,22 @@ export default function CasesPage() {
         setLoading(false);
       })
       .catch((err: unknown) => {
+        if (err instanceof ApiError && err.statusCode === 401) {
+          router.push("/login");
+          return;
+        }
         setError(err instanceof Error ? err.message : "Failed to load your screening cases.");
         setLoading(false);
       });
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (authLoading) return;
+    if (!isAuthenticated) {
       router.push("/login");
       return;
     }
-    if (isAuthenticated) {
-      loadCases();
-    }
+    loadCases();
   }, [authLoading, isAuthenticated, router, loadCases]);
 
   // Group cases by lesionLabel (or "Unlabeled Spots")
@@ -65,6 +68,22 @@ export default function CasesPage() {
     acc[label].push(item);
     return acc;
   }, {});
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">
+        <Header />
+        <main className="flex-1 flex items-center justify-center py-20">
+          <Spinner size="lg" />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">

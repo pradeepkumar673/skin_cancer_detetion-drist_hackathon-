@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Calendar,
   Clock,
@@ -9,19 +10,16 @@ import {
   Phone,
   Video,
   AlertCircle,
-  CheckCircle2,
-  XCircle,
   FileText,
   Stethoscope,
   CreditCard,
-  Ban,
   ArrowRight,
   Receipt,
   RotateCcw,
 } from "lucide-react";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
@@ -201,7 +199,8 @@ export default function AppointmentsPage() {
 }
 
 function AppointmentsContent() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const isDoctor = user?.role === "doctor";
 
   const [appointments, setAppointments] = useState<AppointmentData[]>([]);
@@ -234,6 +233,10 @@ function AppointmentsContent() {
       const data = await apiClient<{ appointments: AppointmentData[] }>("/appointments");
       setAppointments(data.appointments || []);
     } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load appointments");
     } finally {
       setIsLoading(false);
@@ -241,11 +244,16 @@ function AppointmentsContent() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
     fetchAppointments();
     setCurrentTimestamp(Date.now());
     const interval = setInterval(() => setCurrentTimestamp(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authLoading, isAuthenticated, router]);
 
   const handleOpenScheduleModal = (appt: AppointmentData) => {
     setSchedulingAppt(appt);
@@ -441,6 +449,18 @@ function AppointmentsContent() {
       : activeTab === "requests"
       ? requestAppointments
       : pastAppointments;
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-[#FEFFFF] flex flex-col">
@@ -694,7 +714,7 @@ function AppointmentsContent() {
                           {/* Note */}
                           {appt.note && (
                             <p className="text-xs text-[#17252A]/70 italic max-w-lg">
-                              Note: "{appt.note}"
+                              Note: &ldquo;{appt.note}&rdquo;
                             </p>
                           )}
                         </div>

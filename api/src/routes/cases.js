@@ -299,6 +299,7 @@ router.get(
 
     return res.status(200).json({
       case: caseDoc,
+      analysis: caseDoc.analysisId ? caseDoc.analysisId.result : null,
       patient: {
         firstName: patientFirstName,
         ageBand,

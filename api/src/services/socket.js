@@ -31,6 +31,9 @@ export function clearAllPresenceTimers() {
   disconnectTimers.clear();
   userSockets.clear();
   sessionRooms.clear();
+  if (ioInstance) {
+    ioInstance.disconnectSockets(true);
+  }
 }
 
 export async function resetDoctorPresence() {
@@ -214,76 +217,82 @@ export function initSocket(httpServer) {
      * Join consultation session room (appointment:<id>)
      */
     socket.on('chat:join', async (payload, callback) => {
-      const appointmentId = payload?.appointmentId;
-      if (!appointmentId) {
-        socket.emit('session:error', { error: 'invalid_request', message: 'appointmentId is required' });
-        if (typeof callback === 'function') callback({ error: 'appointmentId is required' });
-        return;
-      }
+      try {
+        const appointmentId = payload?.appointmentId;
+        if (!appointmentId) {
+          socket.emit('session:error', { error: 'invalid_request', message: 'appointmentId is required' });
+          if (typeof callback === 'function') callback({ error: 'appointmentId is required' });
+          return;
+        }
 
-      const access = await canAccessSession(userId, appointmentId);
-      if (!access.allowed) {
-        socket.emit('session:error', { error: access.error, message: access.message });
-        if (typeof callback === 'function') callback({ error: access.message, code: access.error });
-        return;
-      }
+        const access = await canAccessSession(userId, appointmentId);
+        if (!access.allowed) {
+          socket.emit('session:error', { error: access.error, message: access.message });
+          if (typeof callback === 'function') callback({ error: access.message, code: access.error });
+          return;
+        }
 
-      const room = `appointment:${appointmentId}`;
-      socket.join(room);
+        const room = `appointment:${appointmentId}`;
+        socket.join(room);
 
-      if (!sessionRooms.has(appointmentId)) {
-        sessionRooms.set(appointmentId, new Set());
-      }
-      sessionRooms.get(appointmentId).add(socket.id);
+        if (!sessionRooms.has(appointmentId)) {
+          sessionRooms.set(appointmentId, new Set());
+        }
+        sessionRooms.get(appointmentId).add(socket.id);
 
-      // Fetch message history
-      const history = await Message.find({ appointmentId })
-        .sort({ createdAt: 1 })
-        .limit(100)
-        .lean();
+        // Fetch message history
+        const history = await Message.find({ appointmentId })
+          .sort({ createdAt: 1 })
+          .limit(100)
+          .lean();
 
-      socket.emit('chat:history', {
-        appointmentId,
-        messages: history.map((m) => ({
-          id: String(m._id),
-          senderId: String(m.senderId),
-          text: m.text,
-          sentAt: m.createdAt,
-        })),
-      });
+        socket.emit('chat:history', {
+          appointmentId,
+          messages: history.map((m) => ({
+            id: String(m._id),
+            senderId: String(m.senderId),
+            text: m.text,
+            sentAt: m.createdAt,
+          })),
+        });
 
-      // Notify other participant that user joined
-      socket.to(room).emit('session:participant_joined', {
-        userId,
-        role: access.isDoctor ? 'doctor' : 'patient',
-        timestamp: new Date().toISOString(),
-      });
+        // Notify other participant that user joined
+        socket.to(room).emit('session:participant_joined', {
+          userId,
+          role: access.isDoctor ? 'doctor' : 'patient',
+          timestamp: new Date().toISOString(),
+        });
 
-      // If room has both participants and status is paid, set in_progress
-      const appointment = access.appointment;
-      if (appointment.status === 'paid') {
-        const roomSockets = Array.from(sessionRooms.get(appointmentId) || []);
-        if (roomSockets.length >= 2) {
-          appointment.status = 'in_progress';
-          if (!appointment.sessionStartedAt) {
-            appointment.sessionStartedAt = new Date();
+        // If room has both participants and status is paid, set in_progress
+        const appointment = access.appointment;
+        if (appointment.status === 'paid') {
+          const roomSockets = Array.from(sessionRooms.get(appointmentId) || []);
+          if (roomSockets.length >= 2) {
+            appointment.status = 'in_progress';
+            if (!appointment.sessionStartedAt) {
+              appointment.sessionStartedAt = new Date();
+            }
+            await appointment.save();
+
+            ioInstance.to(room).emit('session:status', {
+              status: 'in_progress',
+              sessionStartedAt: appointment.sessionStartedAt,
+            });
           }
-          await appointment.save();
+        }
 
-          ioInstance.to(room).emit('session:status', {
-            status: 'in_progress',
+        if (typeof callback === 'function') {
+          callback({
+            success: true,
+            status: appointment.status,
+            role: access.isDoctor ? 'doctor' : 'patient',
             sessionStartedAt: appointment.sessionStartedAt,
           });
         }
-      }
-
-      if (typeof callback === 'function') {
-        callback({
-          success: true,
-          status: appointment.status,
-          role: access.isDoctor ? 'doctor' : 'patient',
-          sessionStartedAt: appointment.sessionStartedAt,
-        });
+      } catch (err) {
+        logger.error({ err: err.message, userId }, 'Error in chat:join handler');
+        socket.emit('session:error', { error: 'server_error', message: err.message });
+        if (typeof callback === 'function') callback({ error: err.message, code: 'server_error' });
       }
     });
 

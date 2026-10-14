@@ -33,19 +33,19 @@ const registerSchema = z
       .regex(/[0-9]/, "Must contain at least one number"),
     languagePref: z.enum(["en", "ta", "hi"]).default("en"),
     // Patient specific
-    skinType: z.enum(["I", "II", "III", "IV", "V", "VI"]).optional(),
-    sunExposure: z.string().optional(),
-    isDiabetic: z.boolean().optional(),
-    familyHistorySkinCancer: z.boolean().optional(),
+    skinType: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["I", "II", "III", "IV", "V", "VI"]).optional()),
+    sunExposure: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    isDiabetic: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().default(false)),
+    familyHistorySkinCancer: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().default(false)),
     // Doctor specific
-    specialty: z.enum(["dermatologist", "wound_care", "diabetologist", "general"]).optional(),
-    registrationNumber: z.string().optional(),
-    bio: z.string().optional(),
+    specialty: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["dermatologist", "wound_care", "diabetologist", "general"]).optional()),
+    registrationNumber: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    bio: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
     // Consent
-    termsAccepted: z.boolean().refine((val) => val === true, {
+    termsAccepted: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().refine((val) => val === true, {
       message: "You must accept the Terms and Conditions and Privacy Policy to register",
-    }),
-    healthConsent: z.boolean().optional(),
+    })),
+    healthConsent: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().optional()),
   })
   .superRefine((data, ctx) => {
     if (data.role === "patient" && !data.healthConsent) {
@@ -99,6 +99,20 @@ export default function RegisterPage() {
     setValue("role", newRole);
   };
 
+  const onInvalid = (fieldErrors: Record<string, { message?: string }>) => {
+    const errorKeys = Object.keys(fieldErrors);
+    if (errorKeys.length > 0) {
+      const firstKey = errorKeys[0];
+      const el = document.getElementById(firstKey);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+      const firstMsg = fieldErrors[firstKey]?.message || `Please check ${firstKey}`;
+      setServerError(`Incomplete form: ${firstMsg}`);
+    }
+  };
+
   const onSubmit = async (data: RegisterFormData) => {
     setServerError(null);
     setSuccessMsg(null);
@@ -110,13 +124,13 @@ export default function RegisterPage() {
         phone: data.phone,
         password: data.password,
         languagePref: data.languagePref,
-        skinType: data.skinType,
-        sunExposure: data.sunExposure,
-        isDiabetic: data.isDiabetic,
-        familyHistorySkinCancer: data.familyHistorySkinCancer,
-        specialty: data.specialty,
-        registrationNumber: data.registrationNumber,
-        bio: data.bio,
+        skinType: data.skinType || undefined,
+        sunExposure: data.sunExposure || undefined,
+        isDiabetic: Boolean(data.isDiabetic),
+        familyHistorySkinCancer: Boolean(data.familyHistorySkinCancer),
+        specialty: data.specialty || undefined,
+        registrationNumber: data.registrationNumber || undefined,
+        bio: data.bio || undefined,
         termsVersionAccepted: legalMeta.version,
         termsAcceptedAt: new Date().toISOString(),
         healthDataConsentAt: role === "patient" ? new Date().toISOString() : undefined,
@@ -197,7 +211,7 @@ export default function RegisterPage() {
                 </Alert>
               )}
 
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
                 <input type="hidden" {...register("role")} />
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -389,6 +403,12 @@ export default function RegisterPage() {
                     </div>
                   )}
                 </div>
+
+                {serverError && (
+                  <Alert variant="error" className="mt-3">
+                    {serverError}
+                  </Alert>
+                )}
 
                 <Button
                   type="submit"
