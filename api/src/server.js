@@ -12,10 +12,14 @@ import connectDB, { disconnectDB, getDBStatus } from './config/db.js';
 import { initModels } from './models/index.js';
 import logger from './utils/logger.js';
 import requestIdMiddleware from './middleware/requestId.js';
+import http from 'http';
 import errorHandler from './middleware/error.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import doctorRoutes from './routes/doctors.js';
+import configRoutes from './routes/config.js';
+import casesRoutes from './routes/cases.js';
+import { initSocket } from './services/socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,6 +68,8 @@ app.use('/auth', authLimiter);
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
 app.use('/doctors', doctorRoutes);
+app.use('/config', configRoutes);
+app.use('/cases', casesRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
@@ -79,6 +85,7 @@ app.get('/health', (_req, res) => {
 app.use(errorHandler);
 
 let serverInstance = null;
+let httpServer = null;
 
 export async function startServer(port = config.PORT || 5000) {
   try {
@@ -86,7 +93,10 @@ export async function startServer(port = config.PORT || 5000) {
     await initModels();
     logger.info('Database indexes and models initialized');
 
-    serverInstance = app.listen(port, () => {
+    httpServer = http.createServer(app);
+    initSocket(httpServer);
+
+    serverInstance = httpServer.listen(port, () => {
       logger.info({ port, env: config.NODE_ENV }, `SkinSentry API server listening on port ${port}`);
     });
 
