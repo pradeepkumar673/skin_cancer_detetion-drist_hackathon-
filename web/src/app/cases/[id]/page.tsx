@@ -141,6 +141,24 @@ export default function CaseDetailsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
+          <Spinner className="h-6 w-6 text-[#2B7A78]" />
+        </div>
+      }
+    >
+      <CaseDetailsContent params={params} />
+    </React.Suspense>
+  );
+}
+
+function CaseDetailsContent({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const resolvedParams = use(params);
   const caseId = resolvedParams.id;
   const router = useRouter();
@@ -1338,7 +1356,7 @@ export default function CaseDetailsPage({
 
       {/* Follow-up Dialog */}
       <Dialog
-        isOpen={followUpOpen}
+        open={followUpOpen}
         onClose={() => setFollowUpOpen(false)}
         title="Schedule Clinical Follow-up Reminder"
       >
@@ -1375,7 +1393,7 @@ export default function CaseDetailsPage({
 
       {/* Delete Confirmation Dialog */}
       <Dialog
-        isOpen={deleteOpen}
+        open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         title="Permanently Purge Screening Case"
       >

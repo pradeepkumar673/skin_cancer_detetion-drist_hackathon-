@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Shield,
   Activity,
-  Sensors,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/Header";
@@ -567,7 +566,7 @@ export default function DoctorDashboardPage() {
                           href={`/consult/${session.id}`}
                           className="bg-[#1B6B63] text-white font-semibold text-xs px-4 py-1.5 rounded-[4px] hover:bg-[#2B7A78] transition-colors flex items-center gap-1.5 select-none"
                         >
-                          <Sensors className="w-4 h-4" />
+                          <Video className="w-4 h-4" />
                           <span>Join consultation</span>
                         </Link>
                       </div>

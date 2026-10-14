@@ -70,6 +70,24 @@ export default function BookConsultationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
+          <Spinner className="h-6 w-6 text-[#2B7A78]" />
+        </div>
+      }
+    >
+      <BookConsultationContent params={params} />
+    </React.Suspense>
+  );
+}
+
+function BookConsultationContent({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const resolvedParams = use(params);
   const doctorId = resolvedParams.id;
   const router = useRouter();
