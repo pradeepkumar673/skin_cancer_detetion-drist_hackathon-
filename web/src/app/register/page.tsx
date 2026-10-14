@@ -10,21 +10,21 @@ import { z } from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
-import { Select } from "@/components/ui/Select";
-import { FormField } from "@/components/ui/FormField";
 import { Alert } from "@/components/ui/Alert";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
-
 import { legalMeta } from "@/content/legalMeta";
+import {
+  ArrowRight,
+  Shield,
+  Lock,
+  ChevronDown,
+  AlertTriangle,
+} from "lucide-react";
 
 const registerSchema = z
   .object({
     role: z.enum(["patient", "doctor"]),
-    name: z.string().trim().min(2, "Name must be at least 2 characters"),
-    email: z.string().trim().email("Please enter a valid clinical email"),
+    name: z.string().trim().min(2, "Full legal name must be at least 2 characters"),
+    email: z.string().trim().email("Please enter a valid clinical or personal email address"),
     phone: z.string().trim().min(8, "Phone number must be at least 8 digits"),
     password: z
       .string()
@@ -32,7 +32,9 @@ const registerSchema = z
       .regex(/[A-Za-z]/, "Must contain at least one letter")
       .regex(/[0-9]/, "Must contain at least one number"),
     languagePref: z.enum(["en", "ta", "hi"]).default("en"),
-    // Patient specific
+    dateOfBirth: z.string().optional(),
+    biologicalSex: z.string().optional(),
+    // Patient specific calibration
     skinType: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["I", "II", "III", "IV", "V", "VI"]).optional()),
     sunExposure: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
     isDiabetic: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().default(false)),
@@ -41,11 +43,14 @@ const registerSchema = z
     specialty: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["dermatologist", "wound_care", "diabetologist", "general"]).optional()),
     registrationNumber: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
     bio: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
-    // Consent
+    // Mandatory statutory consents
     termsAccepted: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().refine((val) => val === true, {
-      message: "You must accept the Terms and Conditions and Privacy Policy to register",
+      message: "You must accept the Terms of Service and Privacy Policy to register",
     })),
     healthConsent: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().optional()),
+    cdssDisclaimerConsent: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean().refine((val) => val === true, {
+      message: "You must acknowledge that this system provides clinical decision support only",
+    })),
   })
   .superRefine((data, ctx) => {
     if (data.role === "patient" && !data.healthConsent) {
@@ -57,13 +62,13 @@ const registerSchema = z
     }
     if (data.role === "doctor") {
       if (!data.specialty) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["specialty"], message: "Specialty is required" });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["specialty"], message: "Medical specialty is required" });
       }
       if (!data.registrationNumber || data.registrationNumber.trim().length < 3) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["registrationNumber"], message: "Medical registration number is required" });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["registrationNumber"], message: "State medical council registration number is required" });
       }
       if (!data.bio || data.bio.trim().length < 10) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["bio"], message: "Bio must be at least 10 characters" });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["bio"], message: "Professional biography must be at least 10 characters" });
       }
     }
   });
@@ -91,6 +96,7 @@ export default function RegisterPage() {
       familyHistorySkinCancer: false,
       termsAccepted: false,
       healthConsent: false,
+      cdssDisclaimerConsent: false,
     },
   });
 
@@ -109,7 +115,7 @@ export default function RegisterPage() {
         el.focus();
       }
       const firstMsg = fieldErrors[firstKey]?.message || `Please check ${firstKey}`;
-      setServerError(`Incomplete form: ${firstMsg}`);
+      setServerError(`Incomplete registration: ${firstMsg}`);
     }
   };
 
@@ -150,20 +156,75 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#FEFFFF]">
+    <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
       <Header />
 
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-lg">
-          <Card className="border-[#17252A]/20">
-            <CardHeader>
-              <CardTitle>Create an Account</CardTitle>
-              <CardDescription>
-                Register as a patient for personal skin monitoring or as a licensed doctor.
-              </CardDescription>
-            </CardHeader>
+      <main className="flex-1 w-full pt-14 pb-16">
+        {/* Top Protocol Advisory Strip */}
+        <div className="w-full bg-[#E8F3F1] border-b border-[#17252A]/15 py-2 px-4 sm:px-6">
+          <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 text-xs text-[#17252A]">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-[#1B6B63] text-[#FEFFFF] px-1.5 py-0.5 rounded-[2px]">
+                Protocol Advisory
+              </span>
+              <p className="font-medium text-[#17252A]/90">
+                Decision support only. A low-risk result never proves there is no problem. A doctor makes the diagnosis.
+              </p>
+            </div>
+            <div className="hidden lg:flex items-center gap-3 font-mono text-[11px] text-[#2B7A78]">
+              <span>ICMR-TeleDerm Validated</span>
+              <span>|</span>
+              <span>Node Sync: Active (0.14s)</span>
+            </div>
+          </div>
+        </div>
 
-            <CardContent>
+        {/* Content Container: Max-width 960px centered */}
+        <div className="w-full max-w-[960px] mx-auto px-4 sm:px-6 py-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Left Column (approx 60% -> 7 cols) */}
+            <section className="lg:col-span-7 flex flex-col">
+              {/* Step Breadcrumb Indicator */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-block w-2 h-2 rounded-[2px] bg-[#1B6B63] animate-pulse"></span>
+                <span className="font-mono text-[11px] text-[#2B7A78] tracking-widest uppercase font-semibold">
+                  PATIENT ONBOARDING / STEP 1 OF 2 — ACCOUNT &amp; CONSENT
+                </span>
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17252A] mb-1">
+                Create your account
+              </h1>
+              <p className="text-sm text-[#17252A]/80 mb-6 leading-relaxed">
+                You will need to accept the Terms, the Privacy Policy, and consent to health-photo processing before you can upload a photo.
+              </p>
+
+              {/* Account Type Toggle */}
+              <div className="mb-6 flex border border-[#17252A]/20 bg-[#FEFFFF] p-1 rounded-[4px] shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => handleRoleChange("patient")}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-[2px] transition-colors duration-150 ${
+                    role === "patient"
+                      ? "bg-[#2B7A78] text-[#FEFFFF]"
+                      : "text-[#17252A]/70 hover:text-[#17252A]"
+                  }`}
+                >
+                  I am a Patient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRoleChange("doctor")}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-[2px] transition-colors duration-150 ${
+                    role === "doctor"
+                      ? "bg-[#2B7A78] text-[#FEFFFF]"
+                      : "text-[#17252A]/70 hover:text-[#17252A]"
+                  }`}
+                >
+                  I am a Doctor / Clinician
+                </button>
+              </div>
+
               {serverError && (
                 <Alert variant="error" className="mb-4">
                   {serverError}
@@ -176,258 +237,474 @@ export default function RegisterPage() {
                 </Alert>
               )}
 
-              {/* Role selection tabs */}
-              <div className="mb-6 flex border border-[#17252A]/15 p-1" style={{ borderRadius: "4px" }}>
-                <button
-                  type="button"
-                  onClick={() => handleRoleChange("patient")}
-                  style={{ borderRadius: "2px" }}
-                  className={`flex-1 py-1.5 text-xs font-semibold transition-colors duration-150 ${
-                    role === "patient"
-                      ? "bg-[#2B7A78] text-[#FEFFFF]"
-                      : "text-[#17252A]/70 hover:text-[#17252A]"
-                  }`}
-                >
-                  I am a Patient
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRoleChange("doctor")}
-                  style={{ borderRadius: "2px" }}
-                  className={`flex-1 py-1.5 text-xs font-semibold transition-colors duration-150 ${
-                    role === "doctor"
-                      ? "bg-[#2B7A78] text-[#FEFFFF]"
-                      : "text-[#17252A]/70 hover:text-[#17252A]"
-                  }`}
-                >
-                  I am a Doctor
-                </button>
-              </div>
-
               {role === "doctor" && (
-                <Alert variant="warning" className="mb-4">
-                  Clinical Verification Notice: Doctor accounts must be verified by an administrator
-                  before appearing to patients in the consultation directory.
-                </Alert>
+                <div className="mb-5 p-3.5 bg-[#FEF0C7] border border-[#FDB022] rounded-[4px] text-xs text-[#B54708]">
+                  <div className="flex items-center gap-2 font-bold mb-1">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>Clinical Credentialing Notice</span>
+                  </div>
+                  <p>
+                    Doctor accounts undergo verification against state medical registers before receiving consultation bookings.
+                  </p>
+                </div>
               )}
 
-              <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
+              {/* Registration Form */}
+              <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="flex flex-col space-y-4">
                 <input type="hidden" {...register("role")} />
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormField label="Full Name" htmlFor="name" error={errors.name?.message} required>
-                    <Input id="name" placeholder="Dr. Jane Smith" {...register("name")} />
-                  </FormField>
-
-                  <FormField label="Email" htmlFor="email" error={errors.email?.message} required>
-                    <Input id="email" type="email" placeholder="jane@clinic.org" {...register("email")} />
-                  </FormField>
+                {/* Full Legal Name */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-semibold text-[#17252A] flex items-center justify-between" htmlFor="name">
+                    <span>Full legal name</span>
+                    <span className="font-mono text-[10px] text-[#2B7A78] uppercase">REQUIRED</span>
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    placeholder="e.g. Priyadarshini Sharma"
+                    className="w-full h-10 px-3 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none transition-colors"
+                    {...register("name")}
+                  />
+                  {errors.name && (
+                    <p className="text-[11px] font-medium text-[#B42318]">{errors.name.message}</p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormField label="Phone Number" htmlFor="phone" error={errors.phone?.message} required>
-                    <Input id="phone" placeholder="9876543210" {...register("phone")} />
-                  </FormField>
-
-                  <FormField label="Preferred Language" htmlFor="languagePref">
-                    <Select id="languagePref" {...register("languagePref")}>
-                      <option value="en">English (en)</option>
-                      <option value="ta">Tamil (ta)</option>
-                      <option value="hi">Hindi (hi)</option>
-                    </Select>
-                  </FormField>
+                {/* Email Address */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-semibold text-[#17252A] flex items-center justify-between" htmlFor="email">
+                    <span>Email address</span>
+                    <span className="font-mono text-[10px] text-[#2B7A78] uppercase">PRIMARY ID</span>
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="priya.sharma@example.in"
+                    className="w-full h-10 px-3 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none transition-colors"
+                    {...register("email")}
+                  />
+                  {errors.email && (
+                    <p className="text-[11px] font-medium text-[#B42318]">{errors.email.message}</p>
+                  )}
                 </div>
 
-                <FormField
-                  label="Password"
-                  htmlFor="password"
-                  hint="At least 10 characters with at least one letter and one number"
-                  error={errors.password?.message}
-                  required
-                >
-                  <Input id="password" type="password" {...register("password")} />
-                </FormField>
+                {/* Phone & Language Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col space-y-1">
+                    <label className="text-xs font-semibold text-[#17252A]" htmlFor="phone">
+                      Mobile contact number
+                    </label>
+                    <input
+                      id="phone"
+                      type="tel"
+                      placeholder="9876543210"
+                      className="w-full h-10 px-3 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none transition-colors"
+                      {...register("phone")}
+                    />
+                    {errors.phone && (
+                      <p className="text-[11px] font-medium text-[#B42318]">{errors.phone.message}</p>
+                    )}
+                  </div>
 
-                {/* Patient Profile Fields */}
-                {role === "patient" && (
-                  <div className="space-y-4 border-t border-[#17252A]/10 pt-4">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-[#17252A]/60">
-                      Medical Profile (Optional)
-                    </h4>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <FormField label="Fitzpatrick Skin Type" htmlFor="skinType">
-                        <Select id="skinType" {...register("skinType")}>
-                          <option value="">Select skin type</option>
-                          <option value="I">Type I (Pale, always burns)</option>
-                          <option value="II">Type II (Fair, usually burns)</option>
-                          <option value="III">Type III (Medium, sometimes burns)</option>
-                          <option value="IV">Type IV (Olive, rarely burns)</option>
-                          <option value="V">Type V (Brown, very rarely burns)</option>
-                          <option value="VI">Type VI (Dark brown / black, never burns)</option>
-                        </Select>
-                      </FormField>
-
-                      <FormField label="Typical Sun Exposure" htmlFor="sunExposure">
-                        <Select id="sunExposure" {...register("sunExposure")}>
-                          <option value="">Select exposure</option>
-                          <option value="low">Low (mostly indoors)</option>
-                          <option value="moderate">Moderate (daily outdoor commutes)</option>
-                          <option value="high">High (outdoor occupation / sports)</option>
-                        </Select>
-                      </FormField>
+                  <div className="flex flex-col space-y-1">
+                    <label className="text-xs font-semibold text-[#17252A]" htmlFor="languagePref">
+                      Preferred clinical language
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="languagePref"
+                        className="w-full h-10 pl-3 pr-8 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none appearance-none cursor-pointer"
+                        {...register("languagePref")}
+                      >
+                        <option value="en">English (Clinical standard)</option>
+                        <option value="ta">Tamil (தமிழ்)</option>
+                        <option value="hi">Hindi (हिन्दी)</option>
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-3 h-4 w-4 text-[#17252A]/60 pointer-events-none" />
                     </div>
+                  </div>
+                </div>
 
-                    <div className="space-y-2 pt-1 text-xs">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 border-[#17252A]/20 text-[#2B7A78] focus:ring-[#2B7A78]"
-                          {...register("familyHistorySkinCancer")}
-                        />
-                        <span>Family history of skin cancer or melanoma</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 border-[#17252A]/20 text-[#2B7A78] focus:ring-[#2B7A78]"
-                          {...register("isDiabetic")}
-                        />
-                        <span>Diagnosed with diabetes or diabetic wound history</span>
-                      </label>
+                {/* Password */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-semibold text-[#17252A]" htmlFor="password">
+                    Create password
+                  </label>
+                  <input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••••••••••"
+                    className="w-full h-10 px-3 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none transition-colors"
+                    {...register("password")}
+                  />
+                  <p className="font-mono text-[11px] text-[#17252A]/70">
+                    Minimum 10 characters, including at least one numeral and letter.
+                  </p>
+                  {errors.password && (
+                    <p className="text-[11px] font-medium text-[#B42318]">{errors.password.message}</p>
+                  )}
+                </div>
+
+                {/* Demographics Grid: DOB & Biological Sex */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col space-y-1">
+                    <label className="text-xs font-semibold text-[#17252A]" htmlFor="dob">
+                      Date of birth (Optional)
+                    </label>
+                    <input
+                      id="dob"
+                      type="date"
+                      className="w-full h-10 px-3 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none transition-colors"
+                      {...register("dateOfBirth")}
+                    />
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <label className="text-xs font-semibold text-[#17252A]" htmlFor="biological_sex">
+                      Biological sex at birth
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="biological_sex"
+                        className="w-full h-10 pl-3 pr-8 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none appearance-none cursor-pointer"
+                        {...register("biologicalSex")}
+                      >
+                        <option value="">Select sex</option>
+                        <option value="female">Female</option>
+                        <option value="male">Male</option>
+                        <option value="other">Other</option>
+                        <option value="prefer_not_to_say">Prefer not to say</option>
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-3 h-4 w-4 text-[#17252A]/60 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Health Context (Patient Only) */}
+                {role === "patient" && (
+                  <div className="pt-4 border-t border-[#17252A]/15 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-[#17252A]">Health context (optional)</h3>
+                      <span className="font-mono text-[10px] text-[#2B7A78] uppercase">Calibration Data</span>
+                    </div>
+                    <p className="text-xs text-[#17252A]/70">
+                      This improves the model&apos;s calibration. You can change it later.
+                    </p>
+
+                    <div className="space-y-3 pt-1">
+                      {/* Fitzpatrick */}
+                      <div className="flex flex-col space-y-1">
+                        <label className="text-xs font-semibold text-[#17252A]" htmlFor="skinType">
+                          Fitzpatrick phototype classification
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="skinType"
+                            className="w-full h-10 pl-3 pr-8 bg-[#FEFFFF] text-[#17252A] text-xs sm:text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none appearance-none cursor-pointer"
+                            {...register("skinType")}
+                          >
+                            <option value="">Select skin phototype</option>
+                            <option value="I">Fitzpatrick I — Very fair, always burns, never tans</option>
+                            <option value="II">Fitzpatrick II — Fair, usually burns, tans with difficulty</option>
+                            <option value="III">Fitzpatrick III — Medium, sometimes mild burn, tans gradually</option>
+                            <option value="IV">Fitzpatrick IV — Olive / Moderate brown, rarely burns, tans easily</option>
+                            <option value="V">Fitzpatrick V — Dark brown, very rarely burns, tans very easily</option>
+                            <option value="VI">Fitzpatrick VI — Deeply pigmented dark brown to black, never burns</option>
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-3 h-4 w-4 text-[#17252A]/60 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Sun Exposure */}
+                      <div className="flex flex-col space-y-1">
+                        <label className="text-xs font-semibold text-[#17252A]" htmlFor="sunExposure">
+                          Average outdoor solar exposure
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="sunExposure"
+                            className="w-full h-10 pl-3 pr-8 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none appearance-none cursor-pointer"
+                            {...register("sunExposure")}
+                          >
+                            <option value="">Select exposure profile</option>
+                            <option value="low">Low (mostly indoors)</option>
+                            <option value="moderate">Moderate (1–3 hours daily outdoor)</option>
+                            <option value="high">High (occupational or extensive outdoor)</option>
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-3 h-4 w-4 text-[#17252A]/60 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Checkboxes */}
+                      <div className="space-y-2 pt-2">
+                        <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 rounded-[2px] border-[#17252A]/30 text-[#2B7A78] focus:ring-0 cursor-pointer"
+                            {...register("familyHistorySkinCancer")}
+                          />
+                          <span className="text-xs text-[#17252A]/90">
+                            Family history of skin cancer (melanoma or non-melanoma)
+                          </span>
+                        </label>
+                        <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 rounded-[2px] border-[#17252A]/30 text-[#2B7A78] focus:ring-0 cursor-pointer"
+                            {...register("isDiabetic")}
+                          />
+                          <span className="text-xs text-[#17252A]/90">
+                            Diagnosed with Type 1 or Type 2 Diabetes{" "}
+                            <span className="text-[#17252A]/60">(informs wound bed healing thresholds)</span>
+                          </span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Doctor Profile Fields */}
+                {/* Professional Credentials (Doctor Only) */}
                 {role === "doctor" && (
-                  <div className="space-y-4 border-t border-[#17252A]/10 pt-4">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-[#17252A]/60">
-                      Professional Credentials
-                    </h4>
+                  <div className="pt-4 border-t border-[#17252A]/15 space-y-4">
+                    <h3 className="text-sm font-bold text-[#17252A]">Professional credentials</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="flex flex-col space-y-1">
+                        <label className="text-xs font-semibold text-[#17252A]" htmlFor="specialty">
+                          Specialty
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="specialty"
+                            className="w-full h-10 pl-3 pr-8 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none appearance-none cursor-pointer"
+                            {...register("specialty")}
+                          >
+                            <option value="">Select specialty</option>
+                            <option value="dermatologist">Dermatologist</option>
+                            <option value="wound_care">Wound Care Specialist</option>
+                            <option value="diabetologist">Diabetologist</option>
+                            <option value="general">General Physician</option>
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-3 h-4 w-4 text-[#17252A]/60 pointer-events-none" />
+                        </div>
+                        {errors.specialty && (
+                          <p className="text-[11px] font-medium text-[#B42318]">{errors.specialty.message}</p>
+                        )}
+                      </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <FormField
-                        label="Specialty"
-                        htmlFor="specialty"
-                        error={errors.specialty?.message}
-                        required
-                      >
-                        <Select id="specialty" {...register("specialty")}>
-                          <option value="">Select specialty</option>
-                          <option value="dermatologist">Dermatologist</option>
-                          <option value="wound_care">Wound Care Specialist</option>
-                          <option value="diabetologist">Diabetologist</option>
-                          <option value="general">General Physician</option>
-                        </Select>
-                      </FormField>
-
-                      <FormField
-                        label="Medical Registration Number"
-                        htmlFor="registrationNumber"
-                        error={errors.registrationNumber?.message}
-                        required
-                      >
-                        <Input
+                      <div className="flex flex-col space-y-1">
+                        <label className="text-xs font-semibold text-[#17252A]" htmlFor="registrationNumber">
+                          Medical Registration Number
+                        </label>
+                        <input
                           id="registrationNumber"
+                          type="text"
                           placeholder="State Medical Council Reg. No."
+                          className="w-full h-10 px-3 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none transition-colors"
                           {...register("registrationNumber")}
                         />
-                      </FormField>
+                        {errors.registrationNumber && (
+                          <p className="text-[11px] font-medium text-[#B42318]">{errors.registrationNumber.message}</p>
+                        )}
+                      </div>
                     </div>
 
-                    <FormField
-                      label="Professional Biography"
-                      htmlFor="bio"
-                      hint="At least 10 characters summarizing clinical qualifications and practice."
-                      error={errors.bio?.message}
-                      required
-                    >
-                      <Textarea
+                    <div className="flex flex-col space-y-1">
+                      <label className="text-xs font-semibold text-[#17252A]" htmlFor="bio">
+                        Professional Biography
+                      </label>
+                      <textarea
                         id="bio"
                         rows={3}
                         placeholder="Clinical qualifications, hospital affiliations, and areas of focus..."
+                        className="w-full p-3 bg-[#FEFFFF] text-[#17252A] text-sm rounded-[4px] border border-[#17252A]/20 focus:border-[#2B7A78] focus:outline-none transition-colors"
                         {...register("bio")}
                       />
-                    </FormField>
+                      {errors.bio && (
+                        <p className="text-[11px] font-medium text-[#B42318]">{errors.bio.message}</p>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {/* Consent Checkboxes */}
-                <div className="space-y-3 pt-3 border-t border-[#17252A]/10">
+                {/* Consent Block: Mist Background Card with Strict Border */}
+                <div className="bg-[#DEF2F1]/50 border border-[#1B6B63]/30 rounded-[4px] p-4 space-y-3 mt-4">
+                  <div className="flex items-center gap-1.5 pb-2 border-b border-[#1B6B63]/20">
+                    <Shield className="h-4 w-4 text-[#1B6B63]" />
+                    <span className="font-mono text-[10px] text-[#1B6B63] font-bold tracking-wider uppercase">
+                      MANDATORY STATUTORY CONSENT (DISHA / DPDPA COMPLIANT)
+                    </span>
+                  </div>
+
+                  {/* Consent 1 */}
                   <div>
-                    <div className="flex items-start gap-2.5">
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
                       <input
-                        id="termsAccepted"
+                        id="consent_terms"
                         type="checkbox"
-                        className="mt-0.5 h-4 w-4 rounded-[4px] border-[#17252A]/30 text-[#2B7A78] focus:ring-2 focus:ring-[#2B7A78]"
+                        className="mt-0.5 h-4 w-4 rounded-[2px] border-[#17252A]/30 text-[#2B7A78] cursor-pointer"
                         {...register("termsAccepted")}
                       />
-                      <label htmlFor="termsAccepted" className="text-xs text-[#17252A]/85 leading-relaxed cursor-pointer select-none">
-                        I have read and agree to the{" "}
-                        <Link href="/terms" target="_blank" className="font-semibold text-[#2B7A78] underline">
-                          Terms and Conditions
+                      <span className="text-xs text-[#17252A] leading-tight">
+                        I accept the{" "}
+                        <Link href="/terms" target="_blank" className="text-[#2B7A78] underline font-medium">
+                          Terms of Service
                         </Link>{" "}
-                        and{" "}
-                        <Link href="/privacy" target="_blank" className="font-semibold text-[#2B7A78] underline">
+                        and the{" "}
+                        <Link href="/privacy" target="_blank" className="text-[#2B7A78] underline font-medium">
                           Privacy Policy
                         </Link>
                         .
-                      </label>
-                    </div>
+                      </span>
+                    </label>
                     {errors.termsAccepted && (
-                      <p className="mt-1 text-[11px] font-medium text-[#B42318] pl-6.5">
+                      <p className="text-[11px] font-medium text-[#B42318] pl-6.5 mt-1">
                         {errors.termsAccepted.message}
                       </p>
                     )}
                   </div>
 
+                  {/* Consent 2 */}
                   {role === "patient" && (
                     <div>
-                      <div className="flex items-start gap-2.5">
+                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
                         <input
-                          id="healthConsent"
+                          id="consent_photos"
                           type="checkbox"
-                          className="mt-0.5 h-4 w-4 rounded-[4px] border-[#17252A]/30 text-[#2B7A78] focus:ring-2 focus:ring-[#2B7A78]"
+                          className="mt-0.5 h-4 w-4 rounded-[2px] border-[#17252A]/30 text-[#2B7A78] cursor-pointer"
                           {...register("healthConsent")}
                         />
-                        <label htmlFor="healthConsent" className="text-xs text-[#17252A]/85 leading-relaxed cursor-pointer select-none">
-                          I explicitly consent to the processing of my health information and skin photos for automated screening and decision-support analysis.
-                        </label>
-                      </div>
+                        <span className="text-xs text-[#17252A] leading-tight">
+                          I consent to SkinSentry processing my uploaded health photos for the purpose of generating a decision-support report.
+                        </span>
+                      </label>
                       {errors.healthConsent && (
-                        <p className="mt-1 text-[11px] font-medium text-[#B42318] pl-6.5">
+                        <p className="text-[11px] font-medium text-[#B42318] pl-6.5 mt-1">
                           {errors.healthConsent.message}
                         </p>
                       )}
                     </div>
                   )}
+
+                  {/* Consent 3 */}
+                  <div>
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                      <input
+                        id="consent_support"
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded-[2px] border-[#17252A]/30 text-[#2B7A78] cursor-pointer"
+                        {...register("cdssDisclaimerConsent")}
+                      />
+                      <span className="text-xs text-[#17252A] leading-tight font-medium">
+                        I understand this is decision support and not a diagnosis.
+                      </span>
+                    </label>
+                    {errors.cdssDisclaimerConsent && (
+                      <p className="text-[11px] font-medium text-[#B42318] pl-6.5 mt-1">
+                        {errors.cdssDisclaimerConsent.message}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                {serverError && (
-                  <Alert variant="error" className="mt-3">
-                    {serverError}
-                  </Alert>
-                )}
+                {/* Submit Action */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full h-11 bg-[#2B7A78] hover:bg-[#1B6B63] text-[#FEFFFF] font-mono text-xs font-bold uppercase tracking-wider rounded-[4px] transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                  >
+                    <span>{isSubmitting ? "Processing Enclave Key..." : "Create account"}</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
 
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="w-full mt-4"
-                  isLoading={isSubmitting}
-                >
-                  Create {role === "doctor" ? "Doctor" : "Patient"} Account
-                </Button>
+                <div className="text-center pt-2">
+                  <span className="text-xs text-[#17252A]/70">
+                    Already have an account?{" "}
+                    <Link href="/login" className="text-[#2B7A78] font-semibold hover:underline">
+                      Log in
+                    </Link>
+                  </span>
+                </div>
               </form>
+            </section>
 
-              <div className="mt-4 border-t border-[#17252A]/10 pt-4 text-center text-xs text-[#17252A]/70">
-                Already registered?{" "}
-                <Link href="/login" className="font-semibold text-[#2B7A78] underline">
-                  Sign in here
-                </Link>
+            {/* Right Column: Telemetry & Privacy Architecture (5 cols) */}
+            <aside className="lg:col-span-5 w-full">
+              <div className="sticky top-20 bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 space-y-4 shadow-sm">
+                <div className="space-y-1">
+                  <span className="font-mono text-[10px] text-[#2B7A78] font-bold tracking-wider uppercase block">
+                    TELEMETRY &amp; PRIVACY ARCHITECTURE
+                  </span>
+                  <h3 className="text-base font-bold text-[#17252A]">
+                    What happens to your photo
+                  </h3>
+                </div>
+
+                <div className="space-y-3.5 pt-1">
+                  {/* Step 1 */}
+                  <div className="flex items-start gap-3">
+                    <span className="font-mono text-xs font-bold bg-[#DEF2F1] text-[#1B6B63] px-2 py-0.5 rounded-[2px] border border-[#1B6B63]/20 shrink-0 mt-0.5">
+                      01
+                    </span>
+                    <p className="text-xs text-[#17252A]/85 leading-relaxed">
+                      Your photo is checked for quality first. Blurry or dark photos are rejected immediately at the client edge.
+                    </p>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="flex items-start gap-3">
+                    <span className="font-mono text-xs font-bold bg-[#DEF2F1] text-[#1B6B63] px-2 py-0.5 rounded-[2px] border border-[#1B6B63]/20 shrink-0 mt-0.5">
+                      02
+                    </span>
+                    <p className="text-xs text-[#17252A]/85 leading-relaxed">
+                      It is stored in an encrypted private vault partition on the secure hospital node, never inside the relational database.
+                    </p>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="flex items-start gap-3">
+                    <span className="font-mono text-xs font-bold bg-[#DEF2F1] text-[#1B6B63] px-2 py-0.5 rounded-[2px] border border-[#1B6B63]/20 shrink-0 mt-0.5">
+                      03
+                    </span>
+                    <p className="text-xs text-[#17252A]/85 leading-relaxed">
+                      It is analyzed by calibrated clinical models on our sovereign infrastructure. It is never sold, licensed, or shared with third parties.
+                    </p>
+                  </div>
+
+                  {/* Step 4 */}
+                  <div className="flex items-start gap-3">
+                    <span className="font-mono text-xs font-bold bg-[#DEF2F1] text-[#1B6B63] px-2 py-0.5 rounded-[2px] border border-[#1B6B63]/20 shrink-0 mt-0.5">
+                      04
+                    </span>
+                    <p className="text-xs text-[#17252A]/85 leading-relaxed">
+                      The Groq language model receives only anonymized mathematical measurements. It never receives your photo, biometric vectors, or name.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#17252A]/10 pt-3 space-y-2">
+                  <div className="flex items-center gap-2 text-[#17252A]/80">
+                    <Lock className="h-4 w-4 text-[#2B7A78] shrink-0" />
+                    <span className="font-mono text-[11px]">
+                      You can permanently purge your clinical case file at any time.
+                    </span>
+                  </div>
+
+                  <div className="bg-[#DEF2F1]/40 border border-[#1B6B63]/20 rounded-[4px] p-3 mt-2">
+                    <div className="flex items-center gap-1.5 text-[#1B6B63] mb-1">
+                      <Shield className="h-3.5 w-3.5" />
+                      <span className="font-mono text-[10px] font-bold uppercase">Statutory Governance</span>
+                    </div>
+                    <p className="font-mono text-[11px] text-[#17252A]/70 leading-normal">
+                      Compliant with ISO 13485 (Medical Devices QMS) &amp; Digital Personal Data Protection Act (DPDPA 2023, Section 7 Consent Model).
+                    </p>
+                  </div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
+            </aside>
+          </div>
         </div>
       </main>
 
