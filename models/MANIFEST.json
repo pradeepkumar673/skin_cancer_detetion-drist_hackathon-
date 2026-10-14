@@ -2,7 +2,7 @@
   "generated_at": "2026-10-14T11:33:12.775103+00:00",
   "git_commit": "c22c6b0be20838410805dd0a83a931598b1e9d92",
   "backbone_id": "D:\\projects\\skin_cancer_detetion(drist_hackathon)\\models\\backbone\\dinov2_small",
-  "artifacts_count": 30,
+  "artifacts_count": 32,
   "artifacts": [
     {
       "path": "models/backbone/dinov2-small/.cache/huggingface/.gitignore",
@@ -215,7 +215,23 @@
       "sha256": "fbbe874f6e8e7770eb01e93b90818d1c9793ce9a68716490c4e7c46601b8d2b5",
       "description": "Cancer Junior A test set evaluation metrics and per-class recall",
       "updated_at": "2026-10-14T11:43:18.755798+00:00"
+    },
+    {
+      "path": "models/ulcer/unet.pt",
+      "size_bytes": 97903999,
+      "size_mb": 93.37,
+      "sha256": "0c127fee0bdb18f02c91a75193a6e9a15d1e19d3c6771e4da311ff74f3bfa1d4",
+      "description": "Ulcer Junior A U-Net ResNet-34 wound segmentation PyTorch checkpoint",
+      "updated_at": "2026-10-14T11:50:02.730694+00:00"
+    },
+    {
+      "path": "models/metrics/ulcer_segmentation.json",
+      "size_bytes": 865,
+      "size_mb": 0.0,
+      "sha256": "e42d8ff05a8885f522ca4e1c913a4c55411f4e00bd310a0bf647e127b7ea65aa",
+      "description": "Ulcer Junior A test set evaluation metrics and tissue heuristic specification",
+      "updated_at": "2026-10-14T11:50:02.739696+00:00"
     }
   ],
-  "updated_at": "2026-10-14T11:43:18.755798+00:00"
+  "updated_at": "2026-10-14T11:50:02.739696+00:00"
 }

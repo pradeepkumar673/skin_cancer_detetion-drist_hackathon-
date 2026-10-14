@@ -1,0 +1,28 @@
+{
+  "model_name": "Ulcer Junior A (ResNet-34 U-Net Wound Segmenter)",
+  "source": "ImageNet pretrained ResNet-34 U-Net (smp) with reference wound calibration",
+  "evaluated_at": "2026-10-14T11:50:02.653182+00:00",
+  "architecture": {
+    "model": "U-Net",
+    "encoder": "resnet34",
+    "in_channels": 3,
+    "classes": 1
+  },
+  "test_metrics": {
+    "dice": 0.5082,
+    "iou": 0.3407,
+    "precision": 0.9978,
+    "recall": 0.3409
+  },
+  "tissue_classification": {
+    "status": "color-based estimates, not clinically validated",
+    "method": "CIE Lab and HSV heuristic rules from clinical_rules.yaml",
+    "categories": [
+      "granulation",
+      "slough",
+      "necrotic",
+      "other"
+    ]
+  },
+  "notes": "Decision-support wound segmentation. In accordance with Rule 11A, tissue fractions are flagged as heuristic estimates."
+}
