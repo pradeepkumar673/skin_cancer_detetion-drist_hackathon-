@@ -16,6 +16,8 @@ import {
   CreditCard,
   Ban,
   ArrowRight,
+  Receipt,
+  RotateCcw,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -69,6 +71,35 @@ interface AppointmentData {
     label: string;
     bodySite: string;
   } | null;
+}
+
+interface PaymentOrderResponse {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+}
+
+interface PaymentVerifyResponse {
+  success: boolean;
+  payment: {
+    id: string;
+    status: string;
+    orderId: string;
+    paymentId: string;
+    amountPaise: number;
+    currency: string;
+  };
+}
+
+interface ActivePaymentState {
+  status: "idle" | "creating_order" | "paying" | "verifying" | "paid" | "failed";
+  error?: string;
+  receipt?: {
+    amountINR: number;
+    orderId: string;
+    paymentId: string;
+  };
 }
 
 const STATUS_CONFIG: Record<
@@ -125,7 +156,51 @@ const STATUS_CONFIG: Record<
   },
 };
 
+/**
+ * Loads Razorpay checkout.js script dynamically on demand
+ */
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && (window as unknown as { Razorpay?: unknown }).Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
+/**
+ * Format remaining window time
+ */
+function getRemainingWindowText(deadlineIso?: string, currentTimestamp?: number | null): { text: string; isExpired: boolean } {
+  if (!deadlineIso) return { text: "", isExpired: false };
+  if (!currentTimestamp) return { text: "Payment window active", isExpired: false };
+  const diff = new Date(deadlineIso).getTime() - currentTimestamp;
+  if (diff <= 0) return { text: "Payment window expired", isExpired: true };
+  const minutes = Math.floor(diff / (60 * 1000));
+  const seconds = Math.floor((diff % (60 * 1000)) / 1000);
+  return { text: `${minutes}m ${seconds}s remaining to pay`, isExpired: false };
+}
+
 export default function AppointmentsPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FEFFFF] flex items-center justify-center">
+          <Spinner className="h-6 w-6 text-[#2B7A78]" />
+        </div>
+      }
+    >
+      <AppointmentsContent />
+    </React.Suspense>
+  );
+}
+
+function AppointmentsContent() {
   const { user } = useAuth();
   const isDoctor = user?.role === "doctor";
 
@@ -133,6 +208,10 @@ export default function AppointmentsPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"upcoming" | "requests" | "past">("upcoming");
+  const [currentTimestamp, setCurrentTimestamp] = useState<number | null>(null);
+
+  // Payment state tracking per appointment
+  const [paymentStates, setPaymentStates] = useState<Record<string, ActivePaymentState>>({});
 
   // Scheduling Dialog state (for Doctors)
   const [schedulingAppt, setSchedulingAppt] = useState<AppointmentData | null>(null);
@@ -163,6 +242,9 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     fetchAppointments();
+    setCurrentTimestamp(Date.now());
+    const interval = setInterval(() => setCurrentTimestamp(Date.now()), 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleOpenScheduleModal = (appt: AppointmentData) => {
@@ -231,6 +313,119 @@ export default function AppointmentsPage() {
     }
   };
 
+  // Razorpay payment launch
+  const handlePayConsultationFee = async (appt: AppointmentData) => {
+    setPaymentStates((prev) => ({
+      ...prev,
+      [appt.id]: { status: "creating_order" },
+    }));
+
+    try {
+      // 1. Create or retrieve order from API
+      const orderData = await apiClient<PaymentOrderResponse>("/payments/order", {
+        method: "POST",
+        body: JSON.stringify({ appointmentId: appt.id }),
+      });
+
+      // 2. Load Razorpay script
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        throw new Error("Unable to load Razorpay payment gateway. Please check your connection.");
+      }
+
+      setPaymentStates((prev) => ({
+        ...prev,
+        [appt.id]: { status: "paying" },
+      }));
+
+      // 3. Open Razorpay modal
+      interface RazorpayPaymentResponse {
+        razorpay_order_id: string;
+        razorpay_payment_id: string;
+        razorpay_signature: string;
+      }
+
+      type RazorpayConstructor = new (options: Record<string, unknown>) => {
+        open: () => void;
+      };
+
+      const RazorpayClass = (window as unknown as { Razorpay: RazorpayConstructor }).Razorpay;
+      const rzpInstance = new RazorpayClass({
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency || "INR",
+        name: "SkinSentry Medical",
+        description: `${appt.mode.toUpperCase()} Consultation Fee`,
+        order_id: orderData.orderId,
+        handler: async (response: RazorpayPaymentResponse) => {
+          setPaymentStates((prev) => ({
+            ...prev,
+            [appt.id]: { status: "verifying" },
+          }));
+
+          try {
+            const verifyRes = await apiClient<PaymentVerifyResponse>("/payments/verify", {
+              method: "POST",
+              body: JSON.stringify(response),
+            });
+
+            setPaymentStates((prev) => ({
+              ...prev,
+              [appt.id]: {
+                status: "paid",
+                receipt: {
+                  amountINR: Math.round(verifyRes.payment.amountPaise / 100),
+                  orderId: verifyRes.payment.orderId,
+                  paymentId: verifyRes.payment.paymentId,
+                },
+              },
+            }));
+
+            await fetchAppointments();
+          } catch (err) {
+            setPaymentStates((prev) => ({
+              ...prev,
+              [appt.id]: {
+                status: "failed",
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : "Payment verification failed. Please contact support.",
+              },
+            }));
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setPaymentStates((prev) => {
+              if (prev[appt.id]?.status === "paying") {
+                return { ...prev, [appt.id]: { status: "idle" } };
+              }
+              return prev;
+            });
+          },
+        },
+        prefill: {
+          name: user?.name || "",
+          email: user?.email || "",
+        },
+        theme: {
+          color: "#2B7A78",
+        },
+      });
+
+      rzpInstance.open();
+    } catch (err) {
+      setPaymentStates((prev) => ({
+        ...prev,
+        [appt.id]: {
+          status: "failed",
+          error: err instanceof Error ? err.message : "Payment initialization failed",
+        },
+      }));
+    }
+  };
+
   // Group appointments into tabs
   const upcomingAppointments = appointments.filter((a) =>
     ["awaiting_payment", "paid", "in_progress"].includes(a.status)
@@ -248,104 +443,130 @@ export default function AppointmentsPage() {
       : pastAppointments;
 
   return (
-    <div className="min-h-screen bg-[#FEFFFF] text-[#17252A]">
-      <PermanentDisclaimer />
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-[#17252A]/15">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#17252A] flex items-center gap-2">
-              <Calendar className="h-6 w-6 text-[#2B7A78]" />
-              <span>Consultation Appointments</span>
+    <div className="min-h-screen bg-[#FEFFFF] flex flex-col">
+      <header className="border-b border-[#DEF2F1] bg-[#FEFFFF] sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="text-lg font-bold tracking-tight text-[#17252A] flex items-center gap-2"
+            >
+              <div className="h-6 w-6 rounded-[4px] bg-[#2B7A78] flex items-center justify-center text-[#FEFFFF] text-xs font-black">
+                S
+              </div>
+              <span>SkinSentry</span>
+            </Link>
+            <span className="text-xs text-[#17252A]/40 font-mono">/</span>
+            <h1 className="text-sm font-semibold text-[#17252A]">
+              {isDoctor ? "Practice Consultations" : "My Appointments"}
             </h1>
-            <p className="text-xs text-[#17252A]/70 mt-1">
-              {isDoctor
-                ? "Manage patient consultation requests, schedule availability slots, and track upcoming clinical sessions."
-                : "Monitor consultation requests, review confirmed appointment times, and enter scheduled session rooms."}
-            </p>
           </div>
 
-          {!isDoctor && (
-            <Link href="/doctors">
-              <Button variant="primary" size="sm" className="flex items-center gap-1.5">
-                <Stethoscope className="h-4 w-4" />
-                <span>Find Physicians</span>
-              </Button>
-            </Link>
-          )}
+          <div className="flex items-center gap-3">
+            {!isDoctor && (
+              <Link href="/doctors">
+                <Button variant="primary" size="sm" className="flex items-center gap-1.5">
+                  <Stethoscope className="h-3.5 w-3.5" />
+                  <span>Book New Consultation</span>
+                </Button>
+              </Link>
+            )}
+            {isDoctor && (
+              <Link href="/doctor/dashboard">
+                <Button variant="secondary" size="sm">
+                  Practice Dashboard
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 py-8 flex-1 w-full space-y-6">
+        <PermanentDisclaimer />
+
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-2 border-b border-[#DEF2F1] pb-2">
+          <button
+            onClick={() => setActiveTab("upcoming")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-[4px] transition-colors duration-150 flex items-center gap-2 ${
+              activeTab === "upcoming"
+                ? "bg-[#2B7A78] text-[#FEFFFF]"
+                : "bg-transparent text-[#17252A] hover:bg-[#DEF2F1]/50"
+            }`}
+          >
+            <span>Upcoming Consultations</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-[4px] bg-[#17252A]/20">
+              {upcomingAppointments.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("requests")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-[4px] transition-colors duration-150 flex items-center gap-2 ${
+              activeTab === "requests"
+                ? "bg-[#2B7A78] text-[#FEFFFF]"
+                : "bg-transparent text-[#17252A] hover:bg-[#DEF2F1]/50"
+            }`}
+          >
+            <span>Pending Requests</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-[4px] bg-[#17252A]/20">
+              {requestAppointments.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("past")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-[4px] transition-colors duration-150 flex items-center gap-2 ${
+              activeTab === "past"
+                ? "bg-[#2B7A78] text-[#FEFFFF]"
+                : "bg-transparent text-[#17252A] hover:bg-[#DEF2F1]/50"
+            }`}
+          >
+            <span>Past & Cancelled</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-[4px] bg-[#17252A]/20">
+              {pastAppointments.length}
+            </span>
+          </button>
         </div>
 
+        {/* Error message */}
         {error && (
-          <Alert variant="error" className="mt-6">
+          <Alert variant="error">
             <AlertCircle className="h-4 w-4" />
             <span>{error}</span>
           </Alert>
         )}
 
-        {/* Tab navigation */}
-        <div className="flex items-center gap-2 border-b border-[#17252A]/15 mt-6 pb-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab("upcoming")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-[4px] border transition-colors duration-150 ${
-              activeTab === "upcoming"
-                ? "bg-[#2B7A78] text-[#FEFFFF] border-[#2B7A78]"
-                : "border-transparent text-[#17252A]/70 hover:text-[#17252A]"
-            }`}
-          >
-            Upcoming ({upcomingAppointments.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("requests")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-[4px] border transition-colors duration-150 ${
-              activeTab === "requests"
-                ? "bg-[#2B7A78] text-[#FEFFFF] border-[#2B7A78]"
-                : "border-transparent text-[#17252A]/70 hover:text-[#17252A]"
-            }`}
-          >
-            Pending Requests ({requestAppointments.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("past")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-[4px] border transition-colors duration-150 ${
-              activeTab === "past"
-                ? "bg-[#2B7A78] text-[#FEFFFF] border-[#2B7A78]"
-                : "border-transparent text-[#17252A]/70 hover:text-[#17252A]"
-            }`}
-          >
-            Past & Cancelled ({pastAppointments.length})
-          </button>
-        </div>
-
         {/* Loading state */}
-        {isLoading && (
-          <div className="py-20 flex flex-col items-center justify-center gap-2 text-xs text-[#17252A]/70">
-            <Spinner size="lg" />
-            <span>Loading consultations...</span>
+        {isLoading ? (
+          <div className="py-20 flex flex-col items-center justify-center gap-3">
+            <Spinner className="h-6 w-6 text-[#2B7A78]" />
+            <p className="text-xs text-[#17252A]/60">Loading consultations...</p>
           </div>
-        )}
-
-        {/* Appointment Cards List */}
-        {!isLoading && (
-          <div className="mt-6 space-y-4">
+        ) : (
+          <div className="space-y-4">
             {displayedList.length === 0 ? (
-              <Card className="border-dashed border-[#17252A]/20 bg-[#DEF2F1]/10">
-                <CardContent className="py-16 text-center">
-                  <Calendar className="h-10 w-10 text-[#2B7A78]/40 mx-auto mb-3" />
-                  <h3 className="text-sm font-semibold text-[#17252A]">
+              <Card className="border border-[#17252A]/10 bg-[#FEFFFF]">
+                <CardContent className="p-10 text-center space-y-3">
+                  <div className="h-10 w-10 mx-auto rounded-[4px] bg-[#DEF2F1] flex items-center justify-center text-[#2B7A78]">
+                    <Calendar className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-sm font-bold text-[#17252A]">No appointments in this tab</h3>
+                  <p className="text-xs text-[#17252A]/70 max-w-sm mx-auto">
                     {activeTab === "upcoming"
-                      ? "No Upcoming Consultations"
+                      ? "You do not have any upcoming confirmed or awaiting payment consultations."
                       : activeTab === "requests"
-                      ? "No Pending Consultation Requests"
-                      : "No Past Consultations"}
-                  </h3>
-                  <p className="text-xs text-[#17252A]/60 mt-1 max-w-sm mx-auto">
-                    {isDoctor
-                      ? "Consultation bookings and requests submitted by patients will appear in this log."
-                      : "You currently have no consultations in this section. Browse verified specialists to schedule a review."}
+                      ? "No pending consultation requests at this time."
+                      : "No past, completed, or cancelled consultations on record."}
                   </p>
+                  {!isDoctor && activeTab === "upcoming" && (
+                    <Link href="/doctors">
+                      <Button variant="primary" size="sm" className="mt-2">
+                        Find a Dermatologist
+                      </Button>
+                    </Link>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -354,6 +575,9 @@ export default function AppointmentsPage() {
                 const otherPartyName = isDoctor
                   ? appt.patient?.name || "Patient"
                   : appt.doctor?.name || "Physician";
+                const pState = paymentStates[appt.id] || { status: "idle" };
+                const deadlineInfo = getRemainingWindowText(appt.paymentDeadlineAt, currentTimestamp);
+                const feeINR = appt.doctor?.feesINR?.[appt.mode] || 0;
 
                 return (
                   <Card
@@ -402,10 +626,47 @@ export default function AppointmentsPage() {
                           </div>
 
                           {/* Payment deadline alert if awaiting payment */}
-                          {appt.status === "awaiting_payment" && appt.paymentDeadlineAt && (
-                            <div className="p-2 bg-[#DEF2F1] border border-[#2B7A78]/30 rounded-[4px] text-xs text-[#17252A]">
-                              <strong>Payment Deadline:</strong> Complete payment before{" "}
-                              {new Date(appt.paymentDeadlineAt).toLocaleTimeString()} to secure the slot.
+                          {appt.status === "awaiting_payment" && (
+                            <div className="p-3 bg-[#DEF2F1] border border-[#2B7A78]/30 rounded-[4px] text-xs text-[#17252A] space-y-1">
+                              <div className="flex items-center justify-between font-semibold">
+                                <span>Fee: ₹{feeINR}</span>
+                                <span
+                                  className={deadlineInfo.isExpired ? "text-red-700" : "text-[#2B7A78]"}
+                                >
+                                  {deadlineInfo.text}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-[#17252A]/80">
+                                Complete payment using Razorpay test mode before the window expires to secure your slot.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Payment failure alert */}
+                          {pState.status === "failed" && pState.error && (
+                            <div className="p-2 bg-red-50 border border-red-200 rounded-[4px] text-xs text-red-700 flex items-center justify-between">
+                              <span>We could not send or verify payment: {pState.error}</span>
+                            </div>
+                          )}
+
+                          {/* Payment Receipt display if paid or recently verified */}
+                          {(appt.status === "paid" || pState.status === "paid") && (
+                            <div className="p-3 bg-[#FEFFFF] border border-[#2B7A78]/40 rounded-[4px] text-xs text-[#17252A] space-y-1">
+                              <div className="flex items-center gap-1.5 font-bold text-[#2B7A78]">
+                                <Receipt className="h-4 w-4" />
+                                <span>Payment Confirmed & Verified</span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] font-mono text-[#17252A]/80 pt-1">
+                                <span>
+                                  Amount: ₹{pState.receipt?.amountINR || feeINR}
+                                </span>
+                                {pState.receipt?.orderId && (
+                                  <span>Order ID: {pState.receipt.orderId}</span>
+                                )}
+                                {pState.receipt?.paymentId && (
+                                  <span>Payment ID: {pState.receipt.paymentId}</span>
+                                )}
+                              </div>
                             </div>
                           )}
 
@@ -454,19 +715,44 @@ export default function AppointmentsPage() {
                           )}
 
                           {/* Patient actions on awaiting_payment */}
-                          {!isDoctor && appt.status === "awaiting_payment" && (
+                          {!isDoctor && appt.status === "awaiting_payment" && !deadlineInfo.isExpired && (
                             <Button
                               variant="primary"
                               size="sm"
-                              className="flex items-center gap-1.5"
-                              onClick={() =>
-                                alert(
-                                  "Online payment integration arrives in Step 23. This reservation is confirmed in test mode."
-                                )
+                              className="flex items-center gap-1.5 bg-[#2B7A78] hover:bg-[#17252A]"
+                              disabled={
+                                pState.status === "creating_order" ||
+                                pState.status === "paying" ||
+                                pState.status === "verifying"
                               }
+                              onClick={() => handlePayConsultationFee(appt)}
                             >
-                              <CreditCard className="h-3.5 w-3.5" />
-                              <span>Pay Consultation Fee</span>
+                              {pState.status === "creating_order" ? (
+                                <>
+                                  <Spinner className="h-3.5 w-3.5" />
+                                  <span>Creating Order...</span>
+                                </>
+                              ) : pState.status === "paying" ? (
+                                <>
+                                  <Spinner className="h-3.5 w-3.5" />
+                                  <span>Opening Checkout...</span>
+                                </>
+                              ) : pState.status === "verifying" ? (
+                                <>
+                                  <Spinner className="h-3.5 w-3.5" />
+                                  <span>Verifying Signature...</span>
+                                </>
+                              ) : pState.status === "failed" ? (
+                                <>
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  <span>Retry Payment (₹{feeINR})</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CreditCard className="h-3.5 w-3.5" />
+                                  <span>Pay Fee (₹{feeINR})</span>
+                                </>
+                              )}
                             </Button>
                           )}
 
@@ -478,7 +764,7 @@ export default function AppointmentsPage() {
                               className="flex items-center gap-1.5"
                               onClick={() =>
                                 alert(
-                                  "Real-time consultation room (chat, audio, video) activates in Step 24."
+                                  "Real-time consultation room (chat, audio, video) connects in Step 24."
                                 )
                               }
                             >

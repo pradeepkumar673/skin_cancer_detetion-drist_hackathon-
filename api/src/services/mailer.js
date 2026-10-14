@@ -13,6 +13,7 @@ import { receiptToPatient } from '../templates/receipt_to_patient.js';
 import { cancelled } from '../templates/cancelled.js';
 import { expired } from '../templates/expired.js';
 import { reminder } from '../templates/reminder.js';
+import { refundToPatient } from '../templates/refund_to_patient.js';
 
 const TEMPLATE_MAP = {
   request_to_doctor: requestToDoctor,
@@ -24,6 +25,7 @@ const TEMPLATE_MAP = {
   cancelled: cancelled,
   expired: expired,
   reminder: reminder,
+  refund_to_patient: refundToPatient,
 };
 
 let mailStatus = 'failed';

@@ -8,6 +8,12 @@ const paymentSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    patientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Patient',
+      required: true,
+      index: true,
+    },
     razorpayOrderId: {
       type: String,
       required: true,
@@ -16,6 +22,7 @@ const paymentSchema = new mongoose.Schema(
     },
     razorpayPaymentId: {
       type: String,
+      index: true,
     },
     amountPaise: {
       type: Number,
@@ -37,9 +44,21 @@ const paymentSchema = new mongoose.Schema(
     },
     webhookEvents: [
       {
-        type: mongoose.Schema.Types.Mixed,
+        type: String,
       },
     ],
+    refundId: {
+      type: String,
+    },
+    refundAmountPaise: {
+      type: Number,
+    },
+    refundReason: {
+      type: String,
+    },
+    refundedAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );

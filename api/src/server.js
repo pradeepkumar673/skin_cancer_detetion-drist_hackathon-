@@ -21,6 +21,7 @@ import configRoutes from './routes/config.js';
 import casesRoutes from './routes/cases.js';
 import appointmentsRoutes from './routes/appointments.js';
 import consentsRoutes from './routes/consents.js';
+import paymentsRoutes from './routes/payments.js';
 import { initSocket, resetDoctorPresence } from './services/socket.js';
 import { verifyMailer, getMailStatus } from './services/mailer.js';
 import { startCronJobs, stopCronJobs } from './services/cron.js';
@@ -38,6 +39,8 @@ app.use(
     credentials: true,
   })
 );
+// Use raw body for Razorpay webhook signature verification
+app.use('/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: `${config.MAX_UPLOAD_MB || 10}mb` }));
 app.use(express.urlencoded({ extended: true, limit: `${config.MAX_UPLOAD_MB || 10}mb` }));
 app.use(cookieParser());
@@ -76,6 +79,7 @@ app.use('/config', configRoutes);
 app.use('/cases', casesRoutes);
 app.use('/appointments', appointmentsRoutes);
 app.use('/consents', consentsRoutes);
+app.use('/payments', paymentsRoutes);
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
