@@ -178,7 +178,7 @@ export default function PrivacyPage() {
                 <h2 className="text-xl font-bold text-[#17252A]">
                   5. Data Retention Periods
                 </h2>
-                <p>We adhere to fixed retention policies configured in our system for this hackathon demonstration:</p>
+                <p>We adhere to fixed retention policies configured in our system for this clinical evaluation prototype:</p>
                 <ul className="list-disc pl-5 space-y-1 text-xs">
                   <li>
                     <strong>Case Photographs and Results:</strong> Retained for 24 hours (1 day) from submission

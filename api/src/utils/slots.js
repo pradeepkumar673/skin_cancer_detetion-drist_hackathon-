@@ -68,7 +68,7 @@ export function formatTimeInTimezone(date, timezone = 'Asia/Kolkata') {
  * @param {Array} params.appointments - Conflicting appointments (status in awaiting_payment, paid, in_progress)
  * @param {string} [params.timezone='Asia/Kolkata'] - Doctor's timezone
  * @param {number} [params.slotDurationMin=15] - Duration of each slot in minutes
- * @param {Date} [params.currentDateForTest] - Optional mock current date for deterministic testing
+ * @param {Date} [params.currentDateForTest] - Optional reference current date for deterministic testing
  * @returns {Array<string>} List of slot start times (e.g. ['09:00', '09:15'])
  */
 export function computeAvailableSlots({

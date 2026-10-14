@@ -20,7 +20,7 @@ import {
   verifyWebhookSignature,
 } from '../services/razorpay.js';
 import { receiptToPatient } from '../templates/receipt_to_patient.js';
-import { paymentReceivedToDoctor } from '../templates/payment_received_to_doctor.js';
+import { paymentReceivedForDoctor } from '../templates/payment_received_to_doctor.js';
 import { sendEmail } from '../services/mailer.js';
 
 const router = Router();

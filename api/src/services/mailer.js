@@ -4,11 +4,11 @@ import logger from '../utils/logger.js';
 import { EmailLog } from '../models/EmailLog.js';
 
 // Import all templates
-import { requestToDoctor } from '../templates/request_to_doctor.js';
+import { requestForDoctor } from '../templates/request_to_doctor.js';
 import { requestReceivedToPatient } from '../templates/request_received_to_patient.js';
 import { confirmedToPatient } from '../templates/confirmed_to_patient.js';
-import { confirmedToDoctor } from '../templates/confirmed_to_doctor.js';
-import { paymentReceivedToDoctor } from '../templates/payment_received_to_doctor.js';
+import { confirmedForDoctor } from '../templates/confirmed_to_doctor.js';
+import { paymentReceivedForDoctor } from '../templates/payment_received_to_doctor.js';
 import { receiptToPatient } from '../templates/receipt_to_patient.js';
 import { cancelled } from '../templates/cancelled.js';
 import { expired } from '../templates/expired.js';
@@ -17,11 +17,11 @@ import { refundToPatient } from '../templates/refund_to_patient.js';
 import { followUpReminder } from '../templates/follow_up_reminder.js';
 
 const TEMPLATE_MAP = {
-  request_to_doctor: requestToDoctor,
+  request_to_doctor: requestForDoctor,
   request_received_to_patient: requestReceivedToPatient,
   confirmed_to_patient: confirmedToPatient,
-  confirmed_to_doctor: confirmedToDoctor,
-  payment_received_to_doctor: paymentReceivedToDoctor,
+  confirmed_to_doctor: confirmedForDoctor,
+  payment_received_to_doctor: paymentReceivedForDoctor,
   receipt_to_patient: receiptToPatient,
   cancelled: cancelled,
   expired: expired,

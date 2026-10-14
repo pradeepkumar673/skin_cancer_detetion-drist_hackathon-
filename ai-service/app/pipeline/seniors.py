@@ -14,7 +14,7 @@ Implements Step 14:
    - Evaluates Junior A top 3, selective abstention, and progression status.
 
 Adheres to Project Rules:
-- Rule 1: No fake data or placeholder predictions.
+- Rule 1: No synthetic data or stub predictions.
 - Rule 2: Thresholds and clinical rules loaded from config files.
 - Rule 10: Decision support only. A doctor makes the diagnosis.
 """

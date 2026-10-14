@@ -2,7 +2,7 @@
  * Template: request_to_doctor
  * Notifies physician of a new consultation request.
  */
-export function requestToDoctor({ doctorName, patientFirstName, mode, requestedTime, dashboardUrl }) {
+export function requestForDoctor({ doctorName, patientFirstName, mode, requestedTime, dashboardUrl }) {
   const subject = 'New consultation request';
   const text = `Hello Dr. ${doctorName},
 

@@ -137,7 +137,7 @@ export default function TermsPage() {
                   Teleconsultation fees are clearly presented prior to booking and processed through Razorpay.
                 </p>
                 <div className="border border-[#17252A]/15 p-3 rounded-[4px] bg-[#DEF2F1]/20 text-xs">
-                  <strong>Refund Policy:</strong> This platform is a hackathon prototype demonstration. Test
+                  <strong>Refund Policy:</strong> This platform is a clinical research prototype demonstration. Test
                   transactions are simulated and eligible for a full refund if a consultation fails or is cancelled.
                 </div>
               </section>

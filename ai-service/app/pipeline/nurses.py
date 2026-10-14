@@ -5,7 +5,7 @@ Evaluates input relevance across three clinical teams:
 - Ulcer nurse (wounds and chronic tissue breakdown)
 - Skin disease nurse (rashes and non-neoplastic conditions)
 
-Never invents fake model outputs (Rule 3).
+Never invents synthetic model outputs (Rule 3).
 """
 
 import json

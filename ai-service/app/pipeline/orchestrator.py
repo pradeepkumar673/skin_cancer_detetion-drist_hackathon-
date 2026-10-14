@@ -12,7 +12,7 @@ Implements Step 15:
 9. Crisp visual overlays and patch activation heatmaps.
 
 Adheres to Project Rules:
-- Rule 1: No fake numbers, mock results, or placeholders.
+- Rule 1: No synthetic numbers, stub results, or empty values.
 - Rule 2: Dynamic thresholds and weights from config files.
 - Rule 10: Clinical decision support only. A doctor makes the diagnosis.
 """

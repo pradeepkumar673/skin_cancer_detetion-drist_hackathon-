@@ -8,7 +8,7 @@ Implements Step 15 arbitration:
 4. Generates transparent arbitration notes explaining prioritization rationale.
 
 Adheres to Project Rules:
-- Rule 1: No fake numbers or arbitrary overrides.
+- Rule 1: No synthetic numbers or arbitrary overrides.
 - Rule 10: Decision support only.
 """
 

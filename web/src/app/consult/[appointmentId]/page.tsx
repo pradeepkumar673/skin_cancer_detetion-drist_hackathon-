@@ -730,7 +730,7 @@ function ConsultationSession({ params }: PageProps) {
                 {/* Audio Mode Graphic Panel */}
                 {appointment.mode === "audio" && (
                   <div className="py-8 bg-[#17252A]/80 rounded-[4px] border border-[#FEFFFF]/10 flex flex-col items-center justify-center gap-3">
-                    <div className="h-16 w-16 rounded-full bg-[#2B7A78] flex items-center justify-center text-[#FEFFFF]">
+                    <div className="h-16 w-16 rounded-[4px] bg-[#2B7A78] flex items-center justify-center text-[#FEFFFF]">
                       <Phone className="h-7 w-7" />
                     </div>
                     <audio ref={remoteVideoRef} autoPlay />

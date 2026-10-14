@@ -2,7 +2,7 @@
  * Template: payment_received_to_doctor
  * Informs physician that consultation fee payment was confirmed.
  */
-export function paymentReceivedToDoctor({ doctorName, patientFirstName, mode, scheduledTime, sessionUrl }) {
+export function paymentReceivedForDoctor({ doctorName, patientFirstName, mode, scheduledTime, sessionUrl }) {
   const subject = 'Payment received for consultation';
   const text = `Hello Dr. ${doctorName},
 

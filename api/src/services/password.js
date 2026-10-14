@@ -3,13 +3,13 @@ import config from '../config/env.js';
 
 const rounds = config?.BCRYPT_ROUNDS ?? 12;
 
-let dummyHashPromise;
+let constantTimeHashPromise;
 
-function dummyHash() {
-  if (!dummyHashPromise) {
-    dummyHashPromise = bcrypt.hash('skinsentry-dummy-compare', rounds);
+function constantTimeHash() {
+  if (!constantTimeHashPromise) {
+    constantTimeHashPromise = bcrypt.hash('skinsentry-timing-compare', rounds);
   }
-  return dummyHashPromise;
+  return constantTimeHashPromise;
 }
 
 export async function hashPassword(plain) {
@@ -18,7 +18,7 @@ export async function hashPassword(plain) {
 
 export async function verifyPassword(plain, passwordHash) {
   if (!passwordHash) {
-    const fallback = await dummyHash();
+    const fallback = await constantTimeHash();
     await bcrypt.compare(plain, fallback);
     return false;
   }

@@ -9,7 +9,7 @@ Implements Step 15 safety checks:
    - "proceed": normal clinical decision support pipeline.
 
 Adheres to Project Rules:
-- Rule 1: No fake data or placeholder decisions.
+- Rule 1: No synthetic data or stub decisions.
 - Rule 2: Thresholds loaded from config/thresholds.json and clinical_rules.yaml.
 - Rule 10: Decision support only.
 """

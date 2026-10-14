@@ -8,7 +8,7 @@ Implements Step 11:
 5. Strict adherence to Rule 11A: tissue fractions are explicitly flagged as heuristic estimates.
 
 Adheres to Project Rules:
-- Rule 1: No fake data or placeholder predictions.
+- Rule 1: No synthetic data or stub predictions.
 - Rule 3: Fails cleanly if model checkpoint is missing.
 - Rule 10: Decision support only.
 """

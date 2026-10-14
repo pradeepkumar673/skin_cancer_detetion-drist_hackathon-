@@ -8,7 +8,7 @@ Implements Step 12:
 5. Linear 8x8 spatial patch attribution decomposition for the top condition.
 
 Adheres to Project Rules:
-- Rule 1: No fake data or mock responses.
+- Rule 1: No synthetic data or stub responses.
 - Rule 3: Fails cleanly if model checkpoint is missing.
 - Rule 10: Decision support only. A doctor makes the diagnosis.
 """

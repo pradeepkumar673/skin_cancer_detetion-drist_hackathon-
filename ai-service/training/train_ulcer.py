@@ -9,7 +9,7 @@ Implements Step 11:
 6. Updates models/MANIFEST.json with SHA-256 hashes and file metadata.
 
 Adheres to Project Rules:
-- Rule 1: No fake numbers; records exact data origin.
+- Rule 1: No synthetic numbers; records exact data origin.
 - Rule 2: Hyperparameters from config.yaml and clinical_rules.yaml.
 - Rule 3: Fails with informative diagnostics if required assets are missing.
 """

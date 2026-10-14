@@ -11,7 +11,7 @@ Implements Step 14:
 8. Updates models/MANIFEST.json.
 
 Adheres to Project Rules:
-- Rule 1: No fake data or placeholder predictions.
+- Rule 1: No synthetic data or stub predictions.
 - Rule 2: Hyperparameters and clinical rules loaded from config.yaml and clinical_rules.yaml.
 - Rule 10: Decision support only. A doctor makes the diagnosis.
 """

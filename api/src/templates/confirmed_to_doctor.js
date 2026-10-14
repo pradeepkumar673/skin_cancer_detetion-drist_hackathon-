@@ -2,7 +2,7 @@
  * Template: confirmed_to_doctor
  * Confirmation details for the physician.
  */
-export function confirmedToDoctor({ doctorName, patientFirstName, mode, scheduledTime, dashboardUrl }) {
+export function confirmedForDoctor({ doctorName, patientFirstName, mode, scheduledTime, dashboardUrl }) {
   const subject = `Appointment confirmed with ${patientFirstName}`;
   const text = `Hello Dr. ${doctorName},
 

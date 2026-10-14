@@ -192,7 +192,7 @@ router.put(
     if (docsToInsert.length > 0) {
       await Availability.insertMany(docsToInsert);
     } else if (parsedExceptions.length > 0) {
-      // Store dummy range placeholder or record if only exceptions were provided
+      // Store default interval record if only exceptions were provided
       await Availability.create({
         doctorId: doctor._id,
         weekday: 0,

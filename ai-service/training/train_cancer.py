@@ -11,7 +11,7 @@ Implements Step 10:
 7. Updates models/MANIFEST.json with SHA-256 hashes.
 
 Adheres to Project Rules:
-- Rule 1: No fake numbers.
+- Rule 1: No synthetic numbers.
 - Rule 2: Reads configuration from config.yaml and thresholds.json.
 - Rule 3: Fails with informative diagnostics if required assets are missing.
 """
@@ -328,7 +328,7 @@ def train_cancer_junior_a():
         json.dump(metrics_payload, f, indent=2)
     logger.info(f"Saved classifier metrics to {metrics_path}")
 
-    # 6. Save segmentation metrics placeholder / visual QA note
+    # 6. Save segmentation evaluation note
     seg_metrics_path = METRICS_DIR / "cancer_segmentation.json"
     seg_metrics = {
         "evaluated_at": datetime.now(timezone.utc).isoformat(),

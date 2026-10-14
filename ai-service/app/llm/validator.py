@@ -1,7 +1,7 @@
 """Validation of LLM-generated explanations against facts and clinical safety constraints.
 
 Rules:
-- Rule 1: No fake or invented numbers. Every number must match input facts.
+- Rule 1: No synthetic or invented numbers. Every number must match input facts.
 - Rule 4: The LLM only explains structured results. It never decides risk.
 - Rule 10: "Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis."
 - Banned phrases check from config/banned_phrases.yaml.

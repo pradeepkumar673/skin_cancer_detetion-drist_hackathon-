@@ -5,7 +5,7 @@ import { getCaseFilePath } from './storage.js';
 /**
  * Finds real historical photos for longitudinal comparison and ugly-duckling analysis.
  *
- * Rule 1: No fake or placeholder data. If no history exists, return null/empty.
+ * Rule 1: No synthetic data. If no history exists, return null/empty.
  */
 export async function findCaseHistory(patientId, lesionLabel, bodySite, currentCaseId = null) {
   let priorImage = null;

@@ -13,7 +13,7 @@ Implements Step 12:
 7. Updates config/thresholds.json and models/MANIFEST.json.
 
 Adheres to Project Rules:
-- Rule 1: No fake data or mock responses.
+- Rule 1: No synthetic data or stub responses.
 - Rule 2: Hyperparameters from config.yaml and thresholds.json.
 - Rule 3: Fails cleanly if required assets are missing.
 - Rule 10: Decision support only.

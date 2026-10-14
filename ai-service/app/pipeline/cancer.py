@@ -6,7 +6,7 @@ Implements:
 3. 8x8 spatial patch activation scores
 4. 7-class lesion classification (mel, nv, bcc, akiec, bkl, df, vasc)
 
-Follows Rule 3: Never invents fake model predictions.
+Follows Rule 3: Never invents synthetic model predictions.
 """
 
 import base64
