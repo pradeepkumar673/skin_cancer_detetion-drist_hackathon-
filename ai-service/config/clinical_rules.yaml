@@ -1,0 +1,37 @@
+# Clinical rules and evidence-based decision support thresholds
+# Note: Decision support only. A doctor makes the diagnosis.
+
+version: "1.0.0"
+
+cancer:
+  abcde:
+    border:
+      compactness_weight: 0.6
+      solidity_weight: 0.4
+    thresholds:
+      asymmetry_high: 0.45
+      border_high: 0.60
+      color_high: 0.50
+      diameter_mm_alert: 6.0
+  urgency_mapping:
+    low: "monitor"
+    moderate: "routine_visit"
+    high: "urgent_visit"
+    very_high: "urgent_visit"
+  warning_signs:
+    escalate_on_ugly_duckling: true
+    escalate_on_rapid_evolution: true
+
+ulcer:
+  healing_trajectory:
+    healed_area_reduction_weekly_pct: 10.0
+    stalled_area_reduction_4weeks_pct: 50.0
+  red_flags:
+    necrotic_fraction_threshold: 0.20
+    slough_fraction_threshold: 0.40
+    periwound_redness_ratio_threshold: 1.35
+    area_expansion_pct_threshold: 15.0
+
+disease:
+  abstain_confidence_threshold: 0.40
+  top_n_candidates: 3

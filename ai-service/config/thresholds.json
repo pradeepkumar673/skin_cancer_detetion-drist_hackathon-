@@ -1,0 +1,38 @@
+{
+  "quality": {
+    "min_blur_laplacian_var": 45.0,
+    "min_brightness_v": 35.0,
+    "max_brightness_v": 230.0,
+    "min_contrast_std": 18.0,
+    "min_width": 200,
+    "min_height": 200,
+    "fixed_resize_long_side": 512
+  },
+  "nurses": {
+    "cancer_relevance_threshold": 0.35,
+    "ulcer_relevance_threshold": 0.35,
+    "disease_relevance_threshold": 0.35,
+    "ood_threshold": 12.5
+  },
+  "cancer": {
+    "junior_a": {
+      "malignant_threshold": 0.40,
+      "patch_grid": [8, 8]
+    },
+    "risk_bands": {
+      "low": 0.15,
+      "moderate": 0.45,
+      "high": 0.75
+    }
+  },
+  "ulcer": {
+    "min_wound_area_px": 50
+  },
+  "disease": {
+    "abstain_confidence": 0.40
+  },
+  "metadata": {
+    "computed_at": "2026-10-14T10:00:00Z",
+    "description": "Baseline clinical thresholds for SkinSentry screening gates"
+  }
+}

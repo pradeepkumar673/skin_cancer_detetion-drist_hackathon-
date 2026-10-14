@@ -11,14 +11,17 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from io import BytesIO
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from PIL import Image
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import structlog
 
 from app.config import Settings, get_settings
-from app.schemas import ErrorResponse, HealthResponse, ModelStatus
+from app.pipeline.quality import assess_quality
+from app.schemas import ErrorResponse, HealthResponse, ModelStatus, QualityResult
 
 # Configure structured JSON logging
 structlog.configure(
@@ -190,6 +193,27 @@ async def health_check():
         python_version=platform.python_version(),
         package_versions=package_versions,
     )
+
+
+@app.post(
+    "/v1/quality",
+    response_model=QualityResult,
+    summary="Assess image quality against clinical screening thresholds",
+    dependencies=[Depends(verify_api_key)],
+)
+async def check_image_quality(
+    image: UploadFile = File(..., description="Image file to evaluate"),
+):
+    """Assess image for blur, lighting, contrast, and resolution."""
+    try:
+        contents = await image.read()
+        pil_image = Image.open(BytesIO(contents))
+        return assess_quality(pil_image)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_image", "message": f"Failed to process image: {str(e)}"},
+        )
 
 
 @app.post(

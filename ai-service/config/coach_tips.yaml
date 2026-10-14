@@ -1,0 +1,11 @@
+# Coach tips for image quality guidance
+# Maps quality failure reasons to patient-facing action instructions
+
+tips:
+  blur_detected: "Move closer and hold the camera still while taking the photo."
+  too_dark: "Add more light or move closer to a window or well-lit area."
+  too_bright: "Avoid harsh flash or glare directly reflecting on the skin."
+  low_contrast: "Ensure proper lighting so details of the lesion stand out from surrounding skin."
+  resolution_too_low: "Hold the camera closer so the skin spot occupies more of the photo."
+  lesion_not_centred: "Keep the skin lesion in the centre of the frame."
+  hair_obscuring: "If possible, gently part or hold back hair covering the area."
