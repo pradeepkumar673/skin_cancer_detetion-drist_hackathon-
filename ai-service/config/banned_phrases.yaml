@@ -1,0 +1,13 @@
+# Prohibited diagnostic claims
+# Rule 10: "Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis."
+banned_phrases:
+  - "you have cancer"
+  - "you are diagnosed"
+  - "diagnosis is"
+  - "we diagnose"
+  - "you definitely have"
+  - "proven to be"
+  - "confirm cancer"
+  - "diagnostic confirmation"
+  - "guaranteed benign"
+  - "no medical problem"

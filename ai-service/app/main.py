@@ -20,11 +20,14 @@ from PIL import Image
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import structlog
 
+from pydantic import BaseModel, Field
+
 from app.config import Settings, get_settings
 from app.pipeline.quality import assess_quality
 from app.schemas import (
     AnalysisResponse,
     ErrorResponse,
+    ExplanationResult,
     HealthResponse,
     ModelStatus,
     PatientContext,
@@ -306,10 +309,10 @@ async def analyze_image_endpoint(
                 detail={"error": "validation_error", "message": f"Invalid patient_context JSON: {str(e)}"},
             )
 
-    from app.pipeline.orchestrator import run_pipeline
+    from app.pipeline.orchestrator import run_pipeline_async
 
     try:
-        response = run_pipeline(
+        response = await run_pipeline_async(
             image=pil_image,
             prior_image=pil_prior,
             other_lesion_images=other_pils if other_pils else None,
@@ -324,3 +327,42 @@ async def analyze_image_endpoint(
             status_code=500,
             detail={"error": "pipeline_error", "message": f"Clinical screening pipeline error: {str(e)}"},
         )
+
+
+class ExplainRequest(BaseModel):
+    """Payload for POST /v1/explain."""
+
+    result: Dict[str, Any] = Field(..., description="Structured analysis result dictionary")
+    language: str = Field("en", description="Target explanation language: en, ta, hi")
+
+
+@app.post(
+    "/v1/explain",
+    response_model=ExplanationResult,
+    tags=["Explanation"],
+    summary="Generate clinical explanation from structured analysis results",
+    dependencies=[Depends(verify_api_key)],
+)
+async def explain_endpoint(
+    request: ExplainRequest,
+) -> ExplanationResult:
+    """Generate or translate clinical explanation from structured facts without raw image data."""
+    from app.llm.service import get_explanation_service
+
+    service = get_explanation_service()
+    explanation = await service.generate_explanation(
+        result=request.result,
+        language=request.language,
+    )
+    return explanation
+
+
+@app.on_event("startup")
+async def verify_external_services():
+    """Verify external model and API configurations on startup."""
+    from app.llm.groq_client import GroqClient
+
+    client = GroqClient()
+    if client.is_configured:
+        await client.verify_model_available()
+

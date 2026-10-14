@@ -17,6 +17,7 @@ Adheres to Project Rules:
 - Rule 10: Clinical decision support only. A doctor makes the diagnosis.
 """
 
+import asyncio
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -25,6 +26,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from PIL import Image
 
+from app.llm.service import get_explanation_service
 from app.pipeline.arbitration import arbitrate_teams
 from app.pipeline.artifacts import render_heatmap_b64, render_overlay_b64
 from app.pipeline.backbone import get_backbone
@@ -87,7 +89,7 @@ def get_model_versions() -> ModelVersions:
     )
 
 
-def run_pipeline(
+async def run_pipeline_async(
     image: Image.Image,
     prior_image: Optional[Image.Image] = None,
     other_lesion_images: Optional[List[Image.Image]] = None,
@@ -95,7 +97,7 @@ def run_pipeline(
     request_id: str = "req-001",
     language: str = "en",
 ) -> AnalysisResponse:
-    """Execute complete multi-team screening pipeline."""
+    """Execute complete multi-team screening pipeline asynchronously."""
     img_rgb = np.array(image.convert("RGB"))
     model_versions = get_model_versions()
 
@@ -121,6 +123,17 @@ def run_pipeline(
             primary_team="none",
             notes=["Analysis halted: image did not meet clinical quality standards."],
         )
+        explanation = await get_explanation_service().generate_explanation(
+            result={
+                "request_id": request_id,
+                "quality": quality,
+                "nurses": empty_nurses,
+                "teams": TeamsContainer(),
+                "safety": empty_safety,
+                "arbitration": empty_arbitration,
+            },
+            language=language,
+        )
         return AnalysisResponse(
             request_id=request_id,
             model_versions=model_versions,
@@ -129,7 +142,7 @@ def run_pipeline(
             teams=TeamsContainer(),
             safety=empty_safety,
             arbitration=empty_arbitration,
-            explanation=ExplanationResult(language=language, text="", source="none", validated=True),
+            explanation=explanation,
             artifacts=ArtifactsResult(),
         )
 
@@ -327,8 +340,21 @@ def run_pipeline(
     )
 
     # -----------------------------------------------------------------------
-    # Step 8: Assemble Response
+    # Step 8: Generate Explanation & Assemble Response
     # -----------------------------------------------------------------------
+    explanation_service = get_explanation_service()
+    explanation = await explanation_service.generate_explanation(
+        result={
+            "request_id": request_id,
+            "quality": quality,
+            "nurses": nurses,
+            "teams": teams,
+            "safety": safety,
+            "arbitration": arbitration,
+        },
+        language=language,
+    )
+
     return AnalysisResponse(
         request_id=request_id,
         model_versions=model_versions,
@@ -337,6 +363,48 @@ def run_pipeline(
         teams=teams,
         safety=safety,
         arbitration=arbitration,
-        explanation=ExplanationResult(language=language, text="", source="none", validated=True),
+        explanation=explanation,
         artifacts=artifacts,
     )
+
+
+def run_pipeline(
+    image: Image.Image,
+    prior_image: Optional[Image.Image] = None,
+    other_lesion_images: Optional[List[Image.Image]] = None,
+    patient_context: Optional[PatientContext] = None,
+    request_id: str = "req-001",
+    language: str = "en",
+) -> AnalysisResponse:
+    """Synchronous entry point executing run_pipeline_async."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(
+                lambda: asyncio.run(
+                    run_pipeline_async(
+                        image=image,
+                        prior_image=prior_image,
+                        other_lesion_images=other_lesion_images,
+                        patient_context=patient_context,
+                        request_id=request_id,
+                        language=language,
+                    )
+                )
+            ).result()
+    else:
+        return asyncio.run(
+            run_pipeline_async(
+                image=image,
+                prior_image=prior_image,
+                other_lesion_images=other_lesion_images,
+                patient_context=patient_context,
+                request_id=request_id,
+                language=language,
+            )
+        )

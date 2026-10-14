@@ -275,6 +275,12 @@ class ExplanationResult(BaseModel):
     text: str = Field("", description="Structured clinical findings explanation")
     source: str = Field("groq", description="Explanation engine source: groq or template")
     validated: bool = Field(True, description="Whether text was validated against input facts")
+    summary: Optional[str] = Field(None, description="Screening summary overview")
+    key_findings: Optional[List[str]] = Field(None, description="List of key clinical observations")
+    why_this_risk: Optional[str] = Field(None, description="Explanation of risk level")
+    next_steps: Optional[List[str]] = Field(None, description="Recommended next actions")
+    limitations: Optional[List[str]] = Field(None, description="Clinical disclaimers and limitations")
+
 
 
 class ArtifactsResult(BaseModel):

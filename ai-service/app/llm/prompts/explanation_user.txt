@@ -1,0 +1,25 @@
+Target language: {language_name} ({language_code})
+
+Here are the de-identified clinical findings from automated skin screening:
+```json
+{facts_json}
+```
+
+Instructions:
+1. Explain these automated dermatological screening facts in {language_name}.
+2. Output MUST be a single, valid JSON object matching this schema:
+{{
+  "summary": "Clear, concise overview of the screening findings.",
+  "key_findings": ["Bullet point finding 1", "Bullet point finding 2"],
+  "why_this_risk": "Explanation of the risk level and clinical parameters that contributed to it.",
+  "next_steps": ["Recommended next step based solely on the urgency action in the facts."],
+  "limitations": ["Clinical disclaimer and limitations: A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis."]
+}}
+
+STRICT CLINICAL SAFETY RULES:
+- You provide DECISION SUPPORT ONLY. You NEVER make or confirm a diagnosis.
+- Never state "you have cancer", "diagnosis is", or "you are diagnosed with".
+- Use ONLY the numbers, percentages, and metrics provided in the facts JSON above. Do NOT invent, round differently, or hallucinate any numbers.
+- Every number in your text must match the input digits exactly.
+- Mention the uncertainty range if provided (low to high).
+- Recommend only the urgency action given in the facts.

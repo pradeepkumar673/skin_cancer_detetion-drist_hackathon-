@@ -1,0 +1,29 @@
+# Deterministic multilingual report templates for LLM fallback
+# Languages supported: English (en), Tamil (ta), Hindi (hi)
+
+en:
+  header: "SkinSentry Clinical Decision Support Summary"
+  disclaimer: "Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis."
+  cancer_summary: "Visual screening observed a {band} risk profile with estimated likelihood of {point} (uncertainty range: {low} to {high})."
+  ulcer_summary: "Wound assessment detected an area of {area_px} pixels ({area_cm2} cm2). Tissue breakdown: {granulation}% granulation, {slough}% slough, {necrotic}% necrotic. Trajectory status: {trajectory}."
+  disease_summary: "Evaluation identified primary indications consistent with {top_condition} (estimated confidence: {confidence}%)."
+  abstain_summary: "Visual features do not match validated condition profiles with sufficient confidence. In-person clinical examination is advised."
+  urgency_recommendation: "Recommended clinical action: {urgency_action}."
+
+ta:
+  header: "ஸ்கின்சென்ட்ரி மருத்துவ முடிவு ஆதரவு சுருக்கம்"
+  disclaimer: "முடிவு ஆதரவு மட்டுமே. மருத்துவர் மட்டுமே நோயறிதலை செய்கிறார்."
+  cancer_summary: "பார்வை பரிசோதனை {band} இடர் சுயவிவரத்தை மதிப்பிட்டுள்ளது. கணிக்கப்பட்ட நிகழ்தகவு {point} (வரம்பு: {low} முதல் {high} வரை)."
+  ulcer_summary: "காயம் மதிப்பீடு பரப்பளவு: {area_px} பிக்சல்கள் ({area_cm2} செ.மீ2). திசு அமைப்பு: {granulation}% கிரானுலேஷன், {slough}% ஸ்லோ, {necrotic}% நெக்ரோடிக்."
+  disease_summary: "மதிப்பீடு முதன்மையாக {top_condition} உடன் ஒத்துப்போகிறது (நம்பகத்தன்மை: {confidence}%)."
+  abstain_summary: "காட்சி அம்சங்கள் போதுமான நம்பிக்கையுடன் பொருந்தவில்லை. நேரில் மருத்துவ பரிசோதனை பரிந்துரைக்கப்படுகிறது."
+  urgency_recommendation: "பரிந்துரைக்கப்பட்ட மருத்துவ நடவடிக்கை: {urgency_action}."
+
+hi:
+  header: "स्किनसेंट्री क्लिनिकल निर्णय समर्थन सारांश"
+  disclaimer: "केवल निर्णय समर्थन। अंतिम निदान केवल चिकित्सक द्वारा किया जाता है।"
+  cancer_summary: "दृश्य स्क्रीनिंग ने {point} अनुमानित संभावना (सीमा: {low} से {high}) के साथ {band} जोखिम प्रोफ़ाइल का अवलोकन किया।"
+  ulcer_summary: "घाव मूल्यांकन: क्षेत्रफल {area_px} पिक्सल ({area_cm2} सेमी2)। ऊतक संरचना: {granulation}% ग्रेनुलेशन, {slough}% स्लो, {necrotic}% नेक्रोटिक।"
+  disease_summary: "मूल्यांकन ने प्राथमिक संकेत {top_condition} के अनुरूप पाए (अनुमानित विश्वास: {confidence}%)।"
+  abstain_summary: "दृश्य विशेषताएं पर्याप्त आत्मविश्वास के साथ मेल नहीं खाती हैं। व्यक्तिगत चिकित्सकीय परामर्श की सलाह दी जाती है।"
+  urgency_recommendation: "अनुशंसित चिकित्सकीय कार्रवाई: {urgency_action}."
