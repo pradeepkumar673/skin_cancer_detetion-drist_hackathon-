@@ -2,7 +2,7 @@
   "generated_at": "2026-10-14T11:33:12.775103+00:00",
   "git_commit": "c22c6b0be20838410805dd0a83a931598b1e9d92",
   "backbone_id": "D:\\projects\\skin_cancer_detetion(drist_hackathon)\\models\\backbone\\dinov2_small",
-  "artifacts_count": 28,
+  "artifacts_count": 30,
   "artifacts": [
     {
       "path": "models/backbone/dinov2-small/.cache/huggingface/.gitignore",
@@ -199,6 +199,23 @@
       "size_mb": 0.0,
       "sha256": "9df21bcc0a6a82611125e06378865fd7df351f4c4bd8606b17dff1845f3b8dfd",
       "updated_at": "2026-10-14T11:33:12.320497+00:00"
+    },
+    {
+      "path": "models/cancer/junior_a_classifier.joblib",
+      "size_bytes": 44400,
+      "size_mb": 0.04,
+      "sha256": "2da617222dd9a7005a926717f91382ccd1bcc059dc9f5f29d21a699a1e17fdd0",
+      "description": "Cancer Junior A 7-class linear multinomial classifier checkpoint",
+      "updated_at": "2026-10-14T11:43:18.737795+00:00"
+    },
+    {
+      "path": "models/metrics/cancer_classifier.json",
+      "size_bytes": 2236,
+      "size_mb": 0.0,
+      "sha256": "fbbe874f6e8e7770eb01e93b90818d1c9793ce9a68716490c4e7c46601b8d2b5",
+      "description": "Cancer Junior A test set evaluation metrics and per-class recall",
+      "updated_at": "2026-10-14T11:43:18.755798+00:00"
     }
-  ]
+  ],
+  "updated_at": "2026-10-14T11:43:18.755798+00:00"
 }

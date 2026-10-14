@@ -1,0 +1,133 @@
+{
+  "model_name": "Cancer Junior A (7-class HAM10000 Lesion Classifier)",
+  "source": "calibrated_reference_embeddings (n=420, seed=42)",
+  "evaluated_at": "2026-10-14T11:43:18.721517+00:00",
+  "hyperparameters": {
+    "best_c": 0.01,
+    "temperature": 0.05,
+    "class_weight": "balanced",
+    "solver": "lbfgs"
+  },
+  "test_metrics": {
+    "balanced_accuracy": 0.3894,
+    "macro_f1": 0.3934,
+    "top2_accuracy": 0.619,
+    "expected_calibration_error_ece": 0.251
+  },
+  "malignant_premalignant_recall": {
+    "melanoma_mel_recall": 0.125,
+    "basal_cell_carcinoma_bcc_recall": 0.5455,
+    "actinic_keratoses_akiec_recall": 0.2857
+  },
+  "per_class": {
+    "akiec": {
+      "recall": 0.2857,
+      "precision": 0.3333,
+      "is_malignant_or_premalignant": true
+    },
+    "bcc": {
+      "recall": 0.5455,
+      "precision": 0.4615,
+      "is_malignant_or_premalignant": true
+    },
+    "bkl": {
+      "recall": 0.4615,
+      "precision": 0.6667,
+      "is_malignant_or_premalignant": false
+    },
+    "df": {
+      "recall": 0.3333,
+      "precision": 0.2,
+      "is_malignant_or_premalignant": false
+    },
+    "mel": {
+      "recall": 0.125,
+      "precision": 0.1111,
+      "is_malignant_or_premalignant": true
+    },
+    "nv": {
+      "recall": 0.375,
+      "precision": 0.6,
+      "is_malignant_or_premalignant": false
+    },
+    "vasc": {
+      "recall": 0.6,
+      "precision": 0.5455,
+      "is_malignant_or_premalignant": false
+    }
+  },
+  "confusion_matrix": [
+    [
+      2,
+      1,
+      0,
+      1,
+      2,
+      0,
+      1
+    ],
+    [
+      1,
+      6,
+      1,
+      1,
+      1,
+      0,
+      1
+    ],
+    [
+      1,
+      1,
+      6,
+      3,
+      0,
+      1,
+      1
+    ],
+    [
+      0,
+      1,
+      0,
+      2,
+      2,
+      0,
+      1
+    ],
+    [
+      2,
+      2,
+      2,
+      0,
+      1,
+      0,
+      1
+    ],
+    [
+      0,
+      2,
+      0,
+      1,
+      2,
+      3,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      2,
+      1,
+      1,
+      6
+    ]
+  ],
+  "classes": [
+    "akiec",
+    "bcc",
+    "bkl",
+    "df",
+    "mel",
+    "nv",
+    "vasc"
+  ]
+}

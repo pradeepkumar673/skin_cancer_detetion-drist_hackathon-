@@ -82,3 +82,53 @@ def test_analyze_cancer_junior_a_returns_valid_schema():
     assert result.abcde.asymmetry >= 0.0
     assert result.abcde.diameter_px > 0
     assert result.patch_scores.grid == [8, 8]
+
+
+def test_cancer_classifier_loads_and_predicts_7_classes():
+    """Verify that Cancer Junior A classifier loads and produces 7 probabilities summing to 1."""
+    from app.pipeline.cancer import HAM10000_CLASSES, get_cancer_classifier
+
+    classifier = get_cancer_classifier()
+    assert classifier.is_ready()
+
+    dummy_img = Image.new("RGB", (224, 224), color=(180, 120, 100))
+    dummy_embedding = np.random.RandomState(42).randn(384).astype(np.float32)
+
+    probs, top_class = classifier.predict(dummy_img, embedding=dummy_embedding)
+
+    assert len(probs) == 7
+    for cls in HAM10000_CLASSES:
+        assert cls in probs
+        assert 0.0 <= probs[cls] <= 1.0
+
+    total_prob = sum(probs.values())
+    assert total_prob == pytest.approx(1.0, abs=1e-3)
+    assert top_class in HAM10000_CLASSES
+
+
+def test_linear_patch_scores_attribution_grid():
+    """Verify that linear patch attributions produce an 8x8 normalized grid."""
+    from app.pipeline.cancer import compute_linear_patch_scores, get_cancer_classifier
+
+    classifier = get_cancer_classifier()
+    if classifier._coef is None:
+        classifier.load_model()
+
+    # Synthetic patch tokens (16x16 grid of 384-dim vectors)
+    rng = np.random.RandomState(42)
+    patch_tokens = rng.randn(16, 16, 384).astype(np.float32)
+
+    patch_scores = compute_linear_patch_scores(
+        patch_tokens=patch_tokens,
+        coef=classifier._coef,
+        intercept=classifier._intercept,
+        classes=classifier._classes,
+        target_grid=(8, 8),
+    )
+
+    assert patch_scores.grid == [8, 8]
+    assert len(patch_scores.values) == 8
+    assert all(len(row) == 8 for row in patch_scores.values)
+    for row in patch_scores.values:
+        for val in row:
+            assert 0.0 <= val <= 1.0

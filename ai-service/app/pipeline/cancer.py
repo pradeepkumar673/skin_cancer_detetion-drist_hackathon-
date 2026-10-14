@@ -210,12 +210,65 @@ def compute_patch_scores(mask: np.ndarray, grid_size: Tuple[int, int] = (8, 8)) 
     return PatchScores(grid=[rows, cols], values=values)
 
 
+def compute_linear_patch_scores(
+    patch_tokens: np.ndarray,
+    coef: np.ndarray,
+    intercept: np.ndarray,
+    classes: List[str],
+    target_grid: Tuple[int, int] = (8, 8),
+) -> PatchScores:
+    """Compute 8x8 spatial malignant-risk attribution scores from backbone patch tokens.
+    
+    Because the classifier is linear on mean patch tokens, applying the weights
+    to each patch token gives approximate localized attribution scores.
+    """
+    grid_h, grid_w, dim = patch_tokens.shape
+    flat_patches = patch_tokens.reshape(-1, dim)  # (N_patches, 384)
+
+    # Per-patch logits: flat_patches @ coef.T + (intercept / N_patches)
+    patch_logits = flat_patches @ coef.T + (intercept / float(flat_patches.shape[0]))
+    # Softmax per patch
+    shift = patch_logits - np.max(patch_logits, axis=-1, keepdims=True)
+    exp_logits = np.exp(shift)
+    patch_probs = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
+
+    # Sum probabilities of malignant/premalignant classes (mel, bcc, akiec)
+    mal_indices = [classes.index(c) for c in MALIGNANT_CLASSES if c in classes]
+    if mal_indices:
+        mal_mass = np.sum(patch_probs[:, mal_indices], axis=-1)
+    else:
+        mal_mass = np.max(patch_probs, axis=-1)
+
+    mal_grid = mal_mass.reshape(grid_h, grid_w)
+
+    # Resize/pool to target grid (e.g. 8x8)
+    rows, cols = target_grid
+    pooled = cv2.resize(mal_grid.astype(np.float32), (cols, rows), interpolation=cv2.INTER_AREA)
+
+    # Normalise between 0 and 1
+    min_val, max_val = float(np.min(pooled)), float(np.max(pooled))
+    if max_val > min_val:
+        norm_grid = (pooled - min_val) / (max_val - min_val)
+    else:
+        norm_grid = pooled
+
+    values = [[round(float(v), 3) for v in row] for row in norm_grid]
+    return PatchScores(grid=[rows, cols], values=values)
+
+
+MALIGNANT_CLASSES = ["mel", "bcc", "akiec"]
+
+
 class CancerJuniorAClassifier:
     """7-class classifier for dermoscopic skin lesions."""
 
     def __init__(self, models_dir: Optional[Path] = None):
         self.models_dir = models_dir or MODELS_DIR
         self._model = None
+        self._temperature: float = 1.0
+        self._classes: List[str] = HAM10000_CLASSES
+        self._coef: Optional[np.ndarray] = None
+        self._intercept: Optional[np.ndarray] = None
 
     def is_ready(self) -> bool:
         """Check if classifier checkpoint is ready on disk."""
@@ -226,7 +279,22 @@ class CancerJuniorAClassifier:
     def load_model(self):
         joblib_path = self.models_dir / "junior_a_classifier.joblib"
         if joblib_path.exists():
-            self._model = joblib.load(joblib_path)
+            payload = joblib.load(joblib_path)
+            if isinstance(payload, dict):
+                self._model = payload.get("model")
+                self._temperature = float(payload.get("temperature", 1.0))
+                self._classes = list(payload.get("classes", HAM10000_CLASSES))
+                self._coef = np.array(payload.get("coef")) if payload.get("coef") is not None else None
+                self._intercept = (
+                    np.array(payload.get("intercept")) if payload.get("intercept") is not None else None
+                )
+            else:
+                self._model = payload
+                if hasattr(self._model, "coef_"):
+                    self._coef = self._model.coef_
+                    self._intercept = self._model.intercept_
+                if hasattr(self._model, "classes_"):
+                    self._classes = list(self._model.classes_)
             return
 
         h5_path = self.models_dir / "vit_skin_cancer" / "efficientnetv2s.h5"
@@ -244,22 +312,33 @@ class CancerJuniorAClassifier:
         
         Raises FileNotFoundError if model checkpoint is not yet available.
         """
-        if self._model is None:
+        if self._model is None and self._coef is None:
             self.load_model()
 
-        # If joblib model is loaded with scikit-learn classifier
-        if self._model is not None and hasattr(self._model, "predict_proba"):
-            if embedding is None:
-                raise ValueError("Embedding required for linear classifier")
-            if embedding.ndim == 1:
-                embedding = embedding.reshape(1, -1)
-            probs = self._model.predict_proba(embedding)[0]
-            classes = getattr(self._model, "classes_", HAM10000_CLASSES)
-            prob_map = {cls: round(float(p), 4) for cls, p in zip(classes, probs)}
-            top_class = max(prob_map, key=prob_map.get)
-            return prob_map, top_class
+        if embedding is None:
+            raise ValueError("Embedding required for linear classifier")
 
-        raise FileNotFoundError("Trained classifier model weights are not loaded.")
+        emb = np.array(embedding, dtype=np.float32)
+        if emb.ndim == 1:
+            emb = emb.reshape(1, -1)
+
+        # Calibrated prediction using linear weights and temperature scaling
+        if self._coef is not None and self._intercept is not None:
+            logits = emb @ self._coef.T + self._intercept
+            scaled_logits = logits / max(self._temperature, 0.01)
+            shift = scaled_logits - np.max(scaled_logits, axis=-1, keepdims=True)
+            exp_scores = np.exp(shift)
+            probs = (exp_scores / np.sum(exp_scores, axis=-1, keepdims=True))[0]
+        elif self._model is not None and hasattr(self._model, "predict_proba"):
+            probs = self._model.predict_proba(emb)[0]
+        else:
+            raise FileNotFoundError("Trained classifier model weights are not loaded.")
+
+        # Ensure probabilities sum to 1.0
+        probs = probs / np.sum(probs)
+        prob_map = {cls: round(float(p), 4) for cls, p in zip(self._classes, probs)}
+        top_class = max(prob_map, key=prob_map.get)
+        return prob_map, top_class
 
 
 _cancer_classifier: Optional[CancerJuniorAClassifier] = None
@@ -276,6 +355,7 @@ def analyze_cancer_junior_a(
     image: Image.Image,
     patient_context: Optional[PatientContext] = None,
     embedding: Optional[np.ndarray] = None,
+    patch_tokens: Optional[np.ndarray] = None,
 ) -> CancerJuniorA:
     """Run Cancer Junior A assessment on input image."""
     img_rgb = np.array(image.convert("RGB"))
@@ -288,19 +368,32 @@ def analyze_cancer_junior_a(
     px_per_cm = patient_context.px_per_cm if patient_context else None
     abcde = compute_abcde_features(mask, img_rgb, px_per_cm=px_per_cm)
 
-    # 3. Patch scores
-    patch_scores = compute_patch_scores(mask)
-
-    # 4. Class probabilities
+    # 3. Class probabilities
     classifier = get_cancer_classifier()
     class_probs: Dict[str, float] = {}
     top_class = ""
-    if classifier.is_ready():
+    if classifier.is_ready() and embedding is not None:
         try:
             class_probs, top_class = classifier.predict(image, embedding=embedding)
         except Exception:
             class_probs = {}
             top_class = ""
+
+    # 4. Patch scores (linear attributions if patch tokens available, else morphological density)
+    if (
+        patch_tokens is not None
+        and classifier._coef is not None
+        and classifier._intercept is not None
+    ):
+        patch_scores = compute_linear_patch_scores(
+            patch_tokens=patch_tokens,
+            coef=classifier._coef,
+            intercept=classifier._intercept,
+            classes=classifier._classes,
+            target_grid=(8, 8),
+        )
+    else:
+        patch_scores = compute_patch_scores(mask, grid_size=(8, 8))
 
     return CancerJuniorA(
         class_probs=class_probs,

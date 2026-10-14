@@ -1,0 +1,6 @@
+{
+  "evaluated_at": "2026-10-14T11:43:18.721517+00:00",
+  "status": "not quantitatively evaluated - visual QA and morphology verification only",
+  "method": "Central Otsu contrast initializer with morphological hole-filling and largest-component extraction",
+  "qa_notes": "ISIC 2018 Task 1 ground-truth masks not present; visual inspection verified on synthetic and reference lesions"
+}

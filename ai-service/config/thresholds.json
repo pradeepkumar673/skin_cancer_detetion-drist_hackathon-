@@ -20,7 +20,9 @@
       "patch_grid": [
         8,
         8
-      ]
+      ],
+      "classifier_best_c": 0.01,
+      "temperature": 0.05
     },
     "risk_bands": {
       "low": 0.15,
@@ -39,5 +41,35 @@
     "source": "dermatological_reference_calibration_set (n=200)",
     "sample_size": 200,
     "percentile_used": 5
+  },
+  "abcde_norm": {
+    "asymmetry": {
+      "p10": 0.05,
+      "p25": 0.12,
+      "p50": 0.24,
+      "p75": 0.38,
+      "p90": 0.52
+    },
+    "border": {
+      "p10": 0.08,
+      "p25": 0.15,
+      "p50": 0.28,
+      "p75": 0.45,
+      "p90": 0.65
+    },
+    "color": {
+      "p10": 0.1,
+      "p25": 0.18,
+      "p50": 0.32,
+      "p75": 0.48,
+      "p90": 0.68
+    },
+    "diameter_px": {
+      "p10": 45.0,
+      "p25": 75.0,
+      "p50": 120.0,
+      "p75": 175.0,
+      "p90": 240.0
+    }
   }
 }
