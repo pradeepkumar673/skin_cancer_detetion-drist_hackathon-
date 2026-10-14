@@ -13,7 +13,7 @@ import WoundMeasurement from '../models/WoundMeasurement.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { writeAudit, clientIp } from '../utils/audit.js';
-import { createCaseSchema, followupSchema, explanationSchema } from '../validators/case.js';
+import { createCaseSchema, followupSchema, explanationSchema, feedbackSchema } from '../validators/case.js';
 import {
   processAndCleanImage,
   saveCaseImage,
@@ -442,6 +442,73 @@ router.patch(
     });
 
     return res.status(200).json({ case: caseDoc });
+  })
+);
+
+/**
+ * POST /cases/:id/feedback
+ * Verified doctor review and clinical validation.
+ */
+router.post(
+  '/:id/feedback',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    if (req.user.role !== 'doctor' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'forbidden',
+        message: 'Only doctors with authorized clinical access can submit review feedback',
+      });
+    }
+
+    const validation = feedbackSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(422).json({
+        error: 'validation_error',
+        message: 'Invalid feedback submission',
+        issues: validation.error.issues,
+      });
+    }
+
+    const caseDoc = await Case.findById(req.params.id);
+    if (!caseDoc) {
+      return res.status(404).json({ error: 'not_found', message: 'Case not found' });
+    }
+
+    const allowed = await canAccessCase(req.user, caseDoc);
+    if (!allowed) {
+      return res.status(404).json({ error: 'not_found', message: 'Case not found' });
+    }
+
+    let doctorId = undefined;
+    if (req.user.role === 'doctor') {
+      const doc = await Doctor.findOne({ userId: req.user._id });
+      doctorId = doc?._id;
+    }
+
+    const feedbackEntry = {
+      doctorId,
+      decision: validation.data.decision,
+      correctedLabel: validation.data.correctedLabel,
+      notes: validation.data.notes,
+      createdAt: new Date(),
+    };
+
+    caseDoc.feedback.push(feedbackEntry);
+    await caseDoc.save();
+
+    await writeAudit({
+      actorId: req.user._id,
+      action: 'CASE_FEEDBACK_SUBMITTED',
+      entityType: 'Case',
+      entityId: caseDoc._id,
+      meta: { decision: validation.data.decision, correctedLabel: validation.data.correctedLabel },
+      ip: clientIp(req),
+    });
+
+    return res.status(200).json({
+      success: true,
+      feedback: caseDoc.feedback,
+    });
   })
 );
 

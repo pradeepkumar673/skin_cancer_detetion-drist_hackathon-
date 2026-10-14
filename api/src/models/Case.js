@@ -54,6 +54,15 @@ const caseSchema = new mongoose.Schema(
     followUpAt: {
       type: Date,
     },
+    feedback: [
+      {
+        doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
+        decision: { type: String, enum: ['accept', 'correct', 'reject'], required: true },
+        correctedLabel: { type: String, trim: true },
+        notes: { type: String, trim: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

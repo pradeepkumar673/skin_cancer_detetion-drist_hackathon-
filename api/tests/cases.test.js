@@ -9,6 +9,8 @@ import connectDB, { disconnectDB } from '../src/config/db.js';
 import config from '../src/config/env.js';
 import User from '../src/models/User.js';
 import Patient from '../src/models/Patient.js';
+import Doctor from '../src/models/Doctor.js';
+import Consent from '../src/models/Consent.js';
 import Case from '../src/models/Case.js';
 import Analysis from '../src/models/Analysis.js';
 import AuditLog from '../src/models/AuditLog.js';
@@ -280,5 +282,72 @@ describe('Cases Module & Secure Uploads', () => {
 
     // Verify disk cleaned
     expect(fs.existsSync(filePath)).toBe(false);
+  });
+
+  it('POST /cases/:id/feedback allows authorized doctor to submit clinical review', async () => {
+    const validJpeg = await createValidJpegBuffer(100, 100);
+
+    const createRes = await request(app)
+      .post('/cases')
+      .set('Authorization', `Bearer ${patient1Token}`)
+      .field('bodySite', 'arm')
+      .attach('image', validJpeg, 'arm.jpg');
+
+    const caseId = createRes.body.case._id;
+    const patientDoc = await Patient.findOne({ userId: patient1User._id || patient1User.id });
+
+    // Register a doctor
+    const docReg = await request(app)
+      .post('/auth/register')
+      .send({
+        email: 'feedbackdoc@example.com',
+        password: 'Password123!',
+        name: 'Dr. Reviewer',
+        role: 'doctor',
+        phone: '9876543299',
+        specialty: 'dermatologist',
+        registrationNumber: 'MED998877',
+        bio: 'Certified clinical dermatologist with 10 years experience.',
+        termsVersionAccepted: '1.0.0',
+        termsAcceptedAt: new Date().toISOString(),
+      });
+
+    const docLogin = await request(app)
+      .post('/auth/login')
+      .send({ email: 'feedbackdoc@example.com', password: 'Password123!' });
+    const doctorToken = docLogin.body.accessToken;
+
+    const doctorDoc = await Doctor.findOne({ registrationNumber: 'MED998877' });
+
+    // Patient cannot submit doctor feedback
+    const patientFeedback = await request(app)
+      .post(`/cases/${caseId}/feedback`)
+      .set('Authorization', `Bearer ${patient1Token}`)
+      .send({ decision: 'accept' });
+    expect(patientFeedback.status).toBe(403);
+
+    // Create consent granting doctor access to this case
+    await Consent.create({
+      patientId: patientDoc._id,
+      doctorId: doctorDoc._id,
+      caseId: caseId,
+      grantedAt: new Date(),
+    });
+
+    const docFeedback = await request(app)
+      .post(`/cases/${caseId}/feedback`)
+      .set('Authorization', `Bearer ${doctorToken}`)
+      .send({
+        decision: 'accept',
+        notes: 'Reviewed features. Concur with low risk assessment.',
+      });
+
+    expect(docFeedback.status).toBe(200);
+    expect(docFeedback.body.success).toBe(true);
+    expect(docFeedback.body.feedback.length).toBe(1);
+    expect(docFeedback.body.feedback[0].decision).toBe('accept');
+
+    const stored = await Case.findById(caseId);
+    expect(stored.feedback.length).toBe(1);
   });
 });

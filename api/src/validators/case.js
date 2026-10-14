@@ -24,3 +24,10 @@ export const followupSchema = z.object({
 export const explanationSchema = z.object({
   language: z.enum(['en', 'ta', 'hi']).optional().default('en'),
 });
+
+export const feedbackSchema = z.object({
+  decision: z.enum(['accept', 'correct', 'reject']),
+  correctedLabel: z.string().trim().optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
+

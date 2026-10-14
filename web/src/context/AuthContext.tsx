@@ -4,6 +4,24 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { apiClient, setAccessToken } from "@/lib/api";
 import { disconnectSocket } from "@/lib/socket";
 
+export interface PatientProfile {
+  id: string;
+  dateOfBirth?: string | null;
+  sex?: string | null;
+  skinType?: string | null;
+  sunExposure?: string | null;
+  familyHistorySkinCancer?: boolean;
+  isDiabetic?: boolean;
+}
+
+export interface DoctorProfile {
+  id: string;
+  specialty?: string;
+  registrationNumber?: string;
+  verificationStatus?: string;
+  bio?: string | null;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -13,6 +31,8 @@ export interface UserProfile {
   languagePref?: string;
   isActive: boolean;
   verificationStatus?: string;
+  patient?: PatientProfile;
+  doctor?: DoctorProfile;
 }
 
 interface AuthContextType {
