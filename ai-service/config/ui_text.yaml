@@ -1,0 +1,22 @@
+# Clinical wording and user-facing terminology
+# Rule 10: "Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis."
+# Rule 17: Plain, specific, short copy. No buzzwords.
+
+disease:
+  condition_prefix: "Possible condition"
+  abstain_title: "Uncertain classification"
+  abstain_message: "The visual features do not match our verified dermatological condition profiles with sufficient confidence. Please consult a clinician for an in-person examination."
+  disclaimer: "Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis."
+
+cancer:
+  risk_bands:
+    low: "Low risk observed"
+    moderate: "Moderate risk observed"
+    high: "High risk observed"
+    very_high: "Urgent evaluation recommended"
+  disclaimer: "Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis."
+
+ulcer:
+  wound_detected: "Wound contour identified"
+  no_wound_detected: "No discrete ulcer margin detected"
+  disclaimer: "Decision support only. A doctor makes the diagnosis."

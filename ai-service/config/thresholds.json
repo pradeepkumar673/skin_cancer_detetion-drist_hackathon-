@@ -34,7 +34,9 @@
     "min_wound_area_px": 50
   },
   "disease": {
-    "abstain_confidence": 0.4
+    "abstain_confidence": 0.4,
+    "temperature": 0.2,
+    "best_c": 0.01
   },
   "metadata": {
     "computed_at": "2026-10-14T11:20:03.936153+00:00",

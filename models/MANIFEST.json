@@ -2,7 +2,7 @@
   "generated_at": "2026-10-14T11:33:12.775103+00:00",
   "git_commit": "c22c6b0be20838410805dd0a83a931598b1e9d92",
   "backbone_id": "D:\\projects\\skin_cancer_detetion(drist_hackathon)\\models\\backbone\\dinov2_small",
-  "artifacts_count": 32,
+  "artifacts_count": 34,
   "artifacts": [
     {
       "path": "models/backbone/dinov2-small/.cache/huggingface/.gitignore",
@@ -231,7 +231,23 @@
       "sha256": "e42d8ff05a8885f522ca4e1c913a4c55411f4e00bd310a0bf647e127b7ea65aa",
       "description": "Ulcer Junior A test set evaluation metrics and tissue heuristic specification",
       "updated_at": "2026-10-14T11:50:02.739696+00:00"
+    },
+    {
+      "path": "models/disease/junior_a_classifier.joblib",
+      "size_bytes": 38296,
+      "size_mb": 0.04,
+      "sha256": "2ebd6dba540b0df65d146e1a30bb0a06cb1bcb02453766c0fefdded5e14ab68b",
+      "description": "Disease Junior A 6-class multinomial classifier checkpoint with calibrated temperature",
+      "updated_at": "2026-10-14T11:55:43.928046+00:00"
+    },
+    {
+      "path": "models/metrics/disease.json",
+      "size_bytes": 2311,
+      "size_mb": 0.0,
+      "sha256": "208327be054efed246f8e9eb58470fdc655118eeeb6e5e3c6c98209d290a2f27",
+      "description": "Disease Junior A test metrics, top-3 accuracy, and selective prediction curve",
+      "updated_at": "2026-10-14T11:55:43.942025+00:00"
     }
   ],
-  "updated_at": "2026-10-14T11:50:02.739696+00:00"
+  "updated_at": "2026-10-14T11:55:43.942025+00:00"
 }
