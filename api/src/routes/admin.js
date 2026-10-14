@@ -17,6 +17,7 @@ import { refundPaymentSchema } from '../validators/payment.js';
 import { refundRazorpayPayment } from '../services/razorpay.js';
 import { refundToPatient } from '../templates/refund_to_patient.js';
 import { sendEmail } from '../services/mailer.js';
+import { runNamedJob } from '../jobs/index.js';
 
 const router = Router();
 
@@ -210,6 +211,29 @@ router.post(
       },
       refundPolicy: config.REFUND_POLICY_TEXT,
     });
+  })
+);
+
+router.post(
+  '/jobs/:name/run',
+  asyncHandler(async (req, res) => {
+    const jobName = req.params.name;
+    try {
+      const result = await runNamedJob(jobName);
+      await writeAudit({
+        actorId: req.user._id,
+        action: 'ADMIN_JOB_TRIGGERED',
+        entityType: 'Job',
+        meta: { jobName, result },
+        ip: clientIp(req),
+      });
+      return res.status(200).json({ job: jobName, result });
+    } catch (err) {
+      if (err.message.startsWith('Unknown job:')) {
+        return res.status(400).json({ error: 'invalid_job', message: err.message });
+      }
+      throw err;
+    }
   })
 );
 

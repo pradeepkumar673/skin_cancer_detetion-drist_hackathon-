@@ -25,7 +25,7 @@ import paymentsRoutes from './routes/payments.js';
 import rtcRoutes from './routes/rtc.js';
 import { initSocket, resetDoctorPresence } from './services/socket.js';
 import { verifyMailer, getMailStatus } from './services/mailer.js';
-import { startCronJobs, stopCronJobs } from './services/cron.js';
+import { startAllJobs, stopAllJobs } from './jobs/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,7 +110,7 @@ export async function startServer(port = config.PORT || 5000) {
     initSocket(httpServer);
     await resetDoctorPresence();
     await verifyMailer();
-    startCronJobs();
+    startAllJobs();
 
     serverInstance = httpServer.listen(port, () => {
       logger.info({ port, env: config.NODE_ENV }, `SkinSentry API server listening on port ${port}`);
@@ -118,7 +118,7 @@ export async function startServer(port = config.PORT || 5000) {
 
     const gracefulShutdown = async (signal) => {
       logger.info({ signal }, 'Graceful shutdown initiated');
-      stopCronJobs();
+      stopAllJobs();
       if (serverInstance) {
         serverInstance.close(async () => {
           await disconnectDB();

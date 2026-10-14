@@ -261,7 +261,13 @@ router.get(
   '/:id',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const caseDoc = await Case.findById(req.params.id).populate('analysisId');
+    const caseDoc = await Case.findById(req.params.id)
+      .populate('analysisId')
+      .populate({
+        path: 'patientId',
+        select: 'dateOfBirth sex skinType',
+        populate: { path: 'userId', select: 'name' },
+      });
     if (!caseDoc) {
       return res.status(404).json({ error: 'not_found', message: 'Case not found' });
     }
@@ -271,8 +277,35 @@ router.get(
       return res.status(404).json({ error: 'not_found', message: 'Case not found' });
     }
 
+    const reports = await Report.find({ caseId: caseDoc._id }).sort({ createdAt: -1 }).lean();
+
+    const patientObj = caseDoc.patientId;
+    let ageBand = 'Adult';
+    if (patientObj?.dateOfBirth) {
+      const ageDiff = Date.now() - new Date(patientObj.dateOfBirth).getTime();
+      const age = Math.abs(new Date(ageDiff).getUTCFullYear() - 1970);
+      if (age < 20) ageBand = '<20';
+      else if (age < 30) ageBand = '20-29';
+      else if (age < 40) ageBand = '30-39';
+      else if (age < 50) ageBand = '40-49';
+      else if (age < 60) ageBand = '50-59';
+      else if (age < 70) ageBand = '60-69';
+      else ageBand = '70+';
+    }
+
+    const patientFirstName = patientObj?.userId?.name
+      ? patientObj.userId.name.split(' ')[0]
+      : 'Patient';
+
     return res.status(200).json({
       case: caseDoc,
+      patient: {
+        firstName: patientFirstName,
+        ageBand,
+        sex: patientObj?.sex || null,
+        skinType: patientObj?.skinType || null,
+      },
+      reports,
     });
   })
 );

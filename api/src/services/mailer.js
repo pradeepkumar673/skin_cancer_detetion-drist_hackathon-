@@ -14,6 +14,7 @@ import { cancelled } from '../templates/cancelled.js';
 import { expired } from '../templates/expired.js';
 import { reminder } from '../templates/reminder.js';
 import { refundToPatient } from '../templates/refund_to_patient.js';
+import { followUpReminder } from '../templates/follow_up_reminder.js';
 
 const TEMPLATE_MAP = {
   request_to_doctor: requestToDoctor,
@@ -26,6 +27,7 @@ const TEMPLATE_MAP = {
   expired: expired,
   reminder: reminder,
   refund_to_patient: refundToPatient,
+  follow_up_reminder: followUpReminder,
 };
 
 let mailStatus = 'failed';

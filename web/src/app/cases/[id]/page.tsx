@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronUp,
   Stethoscope,
+  FileText,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/Header";
@@ -412,6 +413,19 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
 
             <div className="flex items-center gap-3">
               <StatusBadge status={caseDoc.status} />
+
+              {caseDoc.status === "completed" && (
+                <Link href={`/cases/${caseDoc._id}/report`}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex items-center gap-1.5 border-[#2B7A78] text-[#2B7A78] hover:bg-[#DEF2F1]"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>Download Report</span>
+                  </Button>
+                </Link>
+              )}
 
               <Button
                 variant="danger"

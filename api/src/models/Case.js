@@ -54,6 +54,11 @@ const caseSchema = new mongoose.Schema(
     followUpAt: {
       type: Date,
     },
+    followUpReminderSent: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     feedback: [
       {
         doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },

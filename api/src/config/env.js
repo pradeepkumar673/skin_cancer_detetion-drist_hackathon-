@@ -45,6 +45,7 @@ export const envSchema = z.object({
   PRESENCE_GRACE_SECONDS: z.coerce.number().default(60),
   PAYMENT_WINDOW_MINUTES: z.coerce.number().default(30),
   SESSION_GRACE_MINUTES: z.coerce.number().default(15),
+  REMINDER_WINDOW_MINUTES: z.coerce.number().default(15),
   MIN_FEE_INR: z.coerce.number().default(100),
   MAX_FEE_INR: z.coerce.number().default(5000),
   RETENTION_CASE_DAYS: z.coerce.number().default(365),
