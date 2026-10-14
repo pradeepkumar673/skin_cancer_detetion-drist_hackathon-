@@ -109,12 +109,25 @@ app.use('/me', meRoutes);
 app.use('/metrics', metricsRoutes);
 
 // Health check endpoint
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
   const dbStatus = getDBStatus();
+  let aiStatus = 'unreachable';
+  try {
+    const aiResp = await fetch(`${config.AI_SERVICE_URL || 'http://localhost:8000'}/v1/health`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    if (aiResp.ok) {
+      aiStatus = 'ok';
+    }
+  } catch {
+    aiStatus = 'unreachable';
+  }
+
   res.status(200).json({
     status: 'ok',
     db: dbStatus,
     mail: getMailStatus(),
+    aiService: aiStatus,
     uptime: Math.floor(process.uptime()),
   });
 });

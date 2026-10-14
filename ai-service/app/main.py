@@ -166,6 +166,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     response_model=HealthResponse,
     summary="Health check and model status",
 )
+@app.get(
+    "/v1/health",
+    response_model=HealthResponse,
+    include_in_schema=False,
+)
 async def health_check():
     """Report service health, hardware device, required model file availability, and versions."""
     base_dir = Path(__file__).resolve().parent.parent
