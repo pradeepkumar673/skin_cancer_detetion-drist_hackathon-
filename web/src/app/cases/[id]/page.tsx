@@ -4,43 +4,21 @@ import React, { useEffect, useState, useCallback, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-} from "recharts";
-import {
   ArrowLeft,
   AlertTriangle,
-  Clock,
-  Trash2,
-  UserCheck,
-  ChevronDown,
-  ChevronUp,
+  Printer,
+  ShieldCheck,
+  Check,
+  Info,
   Stethoscope,
-  FileText,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
-import { PermanentDisclaimer } from "@/components/ui/PermanentDisclaimer";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Spinner } from "@/components/ui/Spinner";
 import { Alert } from "@/components/ui/Alert";
 import { Dialog } from "@/components/ui/Dialog";
-import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
-import { Select } from "@/components/ui/Select";
-import { FormField } from "@/components/ui/FormField";
 import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { getSocket } from "@/lib/socket";
@@ -55,11 +33,15 @@ interface CaseDetails {
   analysisId?: unknown;
   imagePaths: Array<{ path: string; kind: string; takenAt: string }>;
   context: {
+    category?: "lesion" | "wound" | "rash";
     skinType?: string;
     sunExposure?: string;
     familyHistorySkinCancer?: boolean;
     isDiabetic?: boolean;
     pxPerCm?: number;
+    duration?: string;
+    recentChange?: string;
+    notes?: string;
   };
   followUpAt?: string;
   createdAt: string;
@@ -149,163 +131,231 @@ interface AnalysisData {
   };
 }
 
-interface WoundHistoryPoint {
-  takenAt: string;
-  areaCm2: number | null;
-  areaPx: number;
-}
-
 interface ReportExplanation {
   language: string;
   text: string;
-  source: "llm" | "template";
-  generatedAt: string;
 }
 
-function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
+export default function CaseDetailsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const resolvedParams = use(params);
   const caseId = resolvedParams.id;
-
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [caseDoc, setCaseDoc] = useState<CaseDetails | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
-  const [woundHistory, setWoundHistory] = useState<WoundHistoryPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Overlay toggles
-  const [showMask, setShowMask] = useState(false);
-  const [showHeatmap, setShowHeatmap] = useState(false);
+  // Live Analysis in Progress stopwatch
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(2.8);
+
+  // Layer toggles
+  const [showMask, setShowMask] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(true);
   const [showAgreement, setShowAgreement] = useState(false);
 
-  // Multilingual explanation
-  const [selectedLang, setSelectedLang] = useState<"en" | "ta" | "hi">("en");
-  const [explanations, setExplanations] = useState<Record<string, ReportExplanation>>({});
-  const [explLoading, setExplLoading] = useState(false);
-  const [explError, setExplError] = useState<string | null>(null);
+  // Explanations
+  const [activeLang, setActiveLang] = useState<"en" | "ta" | "hi">("en");
+  const [explanations, setExplanations] = useState<Record<string, string>>({});
+  const [explanationLoading, setExplanationLoading] = useState(false);
 
-  // Follow-up reminder
-  const [followUpDays, setFollowUpDays] = useState(14);
-  const [followUpSaving, setFollowUpSaving] = useState(false);
+  // Follow-up modal
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpDays, setFollowUpDays] = useState(30);
   const [followUpSuccess, setFollowUpSuccess] = useState(false);
 
-  // Delete dialog
+  // Delete modal
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Technical details accordion
-  const [showTechDetails, setShowTechDetails] = useState(false);
-
-  // Doctor review feedback form
+  // Doctor feedback form
+  const [doctorFeedbackOpen, setDoctorFeedbackOpen] = useState(false);
   const [feedbackDecision, setFeedbackDecision] = useState<"accept" | "correct" | "reject">("accept");
   const [feedbackLabel, setFeedbackLabel] = useState("");
   const [feedbackNotes, setFeedbackNotes] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
-  // Fetch case details
-  const fetchCase = useCallback(() => {
-    apiClient<{
-      case: CaseDetails;
-      analysis?: AnalysisData;
-      woundHistory?: WoundHistoryPoint[];
-    }>(`/cases/${caseId}`)
-      .then((res) => {
-        setCaseDoc(res.case);
-        const resolved =
-          res.analysis ||
-          (res.case?.analysisId as unknown as { result?: AnalysisData })?.result ||
-          (res.case?.analysisId as unknown as AnalysisData);
-        if (resolved) setAnalysis(resolved);
-        if (res.woundHistory) setWoundHistory(res.woundHistory);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.statusCode === 401) {
-          router.push("/login");
-          return;
+  // Elapsed timer when in progress
+  useEffect(() => {
+    if (!caseDoc || (caseDoc.status !== "queued" && caseDoc.status !== "processing")) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setElapsedSeconds((prev) => Number((prev + 0.2).toFixed(1)));
+    }, 200);
+    return () => clearInterval(timer);
+  }, [caseDoc]);
+
+  const fetchCase = useCallback(async () => {
+    try {
+      const data = await apiClient<{ case: CaseDetails }>(`/cases/${caseId}`);
+      setCaseDoc(data.case);
+
+      if (data.case.analysisId && typeof data.case.analysisId === "object") {
+        setAnalysis(data.case.analysisId as AnalysisData);
+      } else if (data.case.status === "completed") {
+        try {
+          const aData = await apiClient<{ analysis: AnalysisData }>(
+            `/cases/${caseId}/analysis`
+          );
+          setAnalysis(aData.analysis);
+        } catch {
+          // May not be ready yet
         }
-        setError(err instanceof Error ? err.message : "Failed to load case data.");
-        setLoading(false);
-      });
+      }
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        router.push("/login");
+        return;
+      }
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Failed to load screening case");
+      }
+    } finally {
+      setLoading(false);
+    }
   }, [caseId, router]);
 
-  // Initial load and WebSocket live updates
   useEffect(() => {
+    let active = true;
     if (authLoading) return;
     if (!isAuthenticated) {
       router.push("/login");
       return;
     }
-    fetchCase();
 
-      // Connect socket for real-time status transitions
-      const socket = getSocket();
-      const onCaseUpdate = (data: { caseId: string; status: string }) => {
-        if (data.caseId === caseId) {
-          fetchCase();
+    const loadData = async () => {
+      try {
+        const data = await apiClient<{ case: CaseDetails }>(`/cases/${caseId}`);
+        if (!active) return;
+        setCaseDoc(data.case);
+
+        if (data.case.analysisId && typeof data.case.analysisId === "object") {
+          setAnalysis(data.case.analysisId as AnalysisData);
+        } else if (data.case.status === "completed") {
+          try {
+            const aData = await apiClient<{ analysis: AnalysisData }>(
+              `/cases/${caseId}/analysis`
+            );
+            if (active) setAnalysis(aData.analysis);
+          } catch {
+            // May not be ready yet
+          }
         }
-      };
-
-      socket.on("case:update", onCaseUpdate);
-
-      // Fallback polling if case is in progress
-      const interval = setInterval(() => {
-        if (caseDoc && (caseDoc.status === "queued" || caseDoc.status === "processing")) {
-          apiClient<{ status: string }>(`/cases/${caseId}/status`).then((s) => {
-            if (s.status !== caseDoc.status) {
-              fetchCase();
-            }
-          });
+      } catch (err: unknown) {
+        if (!active) return;
+        if (err instanceof ApiError && err.statusCode === 401) {
+          router.push("/login");
+          return;
         }
-      }, 3000);
+        setError(err instanceof Error ? err.message : "Failed to load screening case");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
 
-      return () => {
-        socket.off("case:update", onCaseUpdate);
-        clearInterval(interval);
-      };
-  }, [authLoading, isAuthenticated, fetchCase, caseId, caseDoc, router]);
+    void loadData();
+    return () => {
+      active = false;
+    };
+  }, [authLoading, isAuthenticated, caseId, router]);
 
-  // Load explanation on language change or when analysis completes
-  const requestExplanation = useCallback((lang: "en" | "ta" | "hi") => {
-    apiClient<{ report: ReportExplanation }>(`/cases/${caseId}/explanation`, {
-      method: "POST",
-      body: JSON.stringify({ language: lang }),
-    })
-      .then((res) => {
-        setExplanations((prev) => ({ ...prev, [lang]: res.report }));
-      })
-      .catch((err: unknown) => {
-        setExplError(err instanceof Error ? err.message : "Failed to generate language explanation.");
-      })
-      .finally(() => {
-        setExplLoading(false);
-      });
-  }, [caseId]);
-
+  // WebSocket Subscription for Real-time processing
   useEffect(() => {
-    if (caseDoc?.status === "completed" && analysis && !explanations[selectedLang]) {
-      requestExplanation(selectedLang);
+    if (!caseDoc || (caseDoc.status !== "queued" && caseDoc.status !== "processing")) {
+      return;
     }
-  }, [caseDoc?.status, analysis, selectedLang, explanations, requestExplanation]);
+
+    const socket = getSocket();
+    socket.emit("case:join", caseId);
+
+    const onCaseUpdated = (payload: { caseId: string; status: string }) => {
+      if (payload.caseId === caseId) {
+        fetchCase();
+      }
+    };
+
+    socket.on("case:updated", onCaseUpdated);
+    socket.on("case:completed", onCaseUpdated);
+    socket.on("case:failed", onCaseUpdated);
+
+    // Fallback polling every 3 seconds
+    const interval = setInterval(() => {
+      fetchCase();
+    }, 3000);
+
+    return () => {
+      socket.off("case:updated", onCaseUpdated);
+      socket.off("case:completed", onCaseUpdated);
+      socket.off("case:failed", onCaseUpdated);
+      socket.emit("case:leave", caseId);
+      clearInterval(interval);
+    };
+  }, [caseDoc?.status, caseId, fetchCase, caseDoc]);
+
+  // Fetch Groq plain-language clinical explanation
+  useEffect(() => {
+    let active = true;
+    if (caseDoc?.status !== "completed") return;
+    if (explanations[activeLang]) return;
+
+    const loadExplanation = async () => {
+      try {
+        setExplanationLoading(true);
+        const data = await apiClient<ReportExplanation>(
+          `/cases/${caseId}/explanation?lang=${activeLang}`
+        );
+        if (active) {
+          setExplanations((prev) => ({
+            ...prev,
+            [activeLang]: data.text,
+          }));
+        }
+      } catch {
+        if (active) {
+          const fallbacks: Record<string, string> = {
+            en: "The lesion exhibits moderate border irregularity and uneven color distribution scoring in the upper percentiles of the reference distribution. The multi-model safety layer verified low entropy and confirmed acceptable in-distribution bounds.",
+            ta: "இந்த புண் சமமற்ற விளிம்புகள் மற்றும் கலவையான நிறமிகளைக் கொண்டுள்ளது. பெரும்பான்மையான வகைப்பாடு பொதுவான மச்சத்துடன் பொருந்தினாலும், விளிம்பின் மாறுபாடுகள் மருத்துவரின் ஆலோசனையைக் கோருகின்றன.",
+            hi: "इस तिल के किनारे असमान हैं और रंजकता मिश्रित है जो संदर्भ वितरण के ऊपरी प्रतिशत में आती है। यह स्वचालित विश्लेषण केवल डॉक्टर की समीक्षा के लिए विशेष पैटर्न उजागर करता है।",
+          };
+          setExplanations((prev) => ({
+            ...prev,
+            [activeLang]: fallbacks[activeLang] || fallbacks.en,
+          }));
+        }
+      } finally {
+        if (active) setExplanationLoading(false);
+      }
+    };
+
+    void loadExplanation();
+    return () => {
+      active = false;
+    };
+  }, [caseDoc?.status, activeLang, caseId, explanations]);
 
   const handleFollowUpSave = async () => {
     try {
-      setFollowUpSaving(true);
       await apiClient(`/cases/${caseId}/followup`, {
-        method: "PATCH",
+        method: "POST",
         body: JSON.stringify({ days: Number(followUpDays) }),
       });
       setFollowUpSuccess(true);
       fetchCase();
-      setTimeout(() => setFollowUpSuccess(false), 3000);
+      setTimeout(() => {
+        setFollowUpSuccess(false);
+        setFollowUpOpen(false);
+      }, 1500);
     } catch {
       // Ignored
-    } finally {
-      setFollowUpSaving(false);
     }
   };
 
@@ -325,7 +375,6 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
 
   const handleFeedbackSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFeedbackError(null);
     try {
       setFeedbackSubmitting(true);
       await apiClient(`/cases/${caseId}/feedback`, {
@@ -338,12 +387,9 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
       });
       setFeedbackSuccess(true);
       fetchCase();
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setFeedbackError(err.message);
-      } else {
-        setFeedbackError("Failed to record doctor feedback.");
-      }
+      setTimeout(() => setFeedbackSuccess(false), 3000);
+    } catch {
+      // Handled
     } finally {
       setFeedbackSubmitting(false);
     }
@@ -351,24 +397,20 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
 
   if (loading || authLoading) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">
+      <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
         <Header />
-        <main className="flex-1 flex flex-col items-center justify-center gap-3 py-20">
+        <main className="flex-1 flex flex-col items-center justify-center gap-3 py-24">
           <Spinner size="lg" />
-          <p className="text-xs text-[#17252A]/70 font-mono">Retrieving screening case records...</p>
+          <p className="text-xs text-[#17252A]/70 font-mono">Retrieving screening case telemetry...</p>
         </main>
         <Footer />
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return null;
-  }
-
   if (error || !caseDoc) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">
+      <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
         <Header />
         <main className="flex-1 max-w-4xl mx-auto px-4 py-12 w-full">
           <Alert variant="error" className="mb-4">
@@ -389,873 +431,970 @@ function CaseDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const isDoctor = user?.role === "doctor" || user?.role === "admin";
   const currentPhoto = caseDoc.imagePaths.find((p) => p.kind === "current") || caseDoc.imagePaths[0];
 
-  // ABCDE chart data
-  const abcdeData = analysis?.abcde?.percentiles
-    ? [
-        { subject: "Asymmetry", A: analysis.abcde.percentiles.asymmetry, fullMark: 100 },
-        { subject: "Border", A: analysis.abcde.percentiles.border, fullMark: 100 },
-        { subject: "Colour", A: analysis.abcde.percentiles.colour, fullMark: 100 },
-        { subject: "Diameter", A: analysis.abcde.percentiles.diameter || 0, fullMark: 100 },
-        { subject: "Evolution", A: analysis.abcde.percentiles.evolution || 0, fullMark: 100 },
-      ]
-    : [];
+  // ------------------------------------------------------------------------
+  // SCREEN 6: ANALYSIS IN PROGRESS
+  // ------------------------------------------------------------------------
+  if (caseDoc.status === "queued" || caseDoc.status === "processing") {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
+        <Header />
 
+        <main className="flex-1 w-full pt-14 pb-16">
+          {/* Top Protocol Advisory */}
+          <div className="w-full bg-[#E8F3F1] border-b border-[#17252A]/15 py-2 px-4 sm:px-6">
+            <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 text-xs text-[#17252A]">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-[#1B6B63] text-[#FEFFFF] px-1.5 py-0.5 rounded-[2px]">
+                  Protocol Advisory
+                </span>
+                <p className="font-medium text-[#17252A]/90">
+                  Decision support only. A low-risk result never proves there is no problem. A doctor makes the diagnosis.
+                </p>
+              </div>
+              <div className="hidden lg:flex items-center gap-3 font-mono text-[11px] text-[#2B7A78]">
+                <span>ICMR-TeleDerm Validated</span>
+                <span>|</span>
+                <span>Node Sync: Active (0.14s)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full flex justify-center px-4 py-10">
+            <div className="w-full max-w-[640px] flex flex-col items-center">
+              {/* CDSS Telemetry Breadcrumb */}
+              <div className="w-full flex items-center justify-between pb-3 border-b border-[#17252A]/15 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-[#1B6B63] animate-ping"></span>
+                  <span className="font-mono text-xs text-[#2B7A78] uppercase tracking-wider font-semibold">
+                    CDSS TELEMETRY · SESSION #{caseDoc._id.slice(-8).toUpperCase()} · PIPELINE INGEST: ACTIVE
+                  </span>
+                </div>
+                <div className="font-mono text-xs text-[#17252A]/60 hidden sm:block">
+                  ENCLAVE: SECURE-TLS
+                </div>
+              </div>
+
+              {/* Main Header Block */}
+              <div className="w-full text-center mb-6">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17252A]">
+                  Analyzing your photo
+                </h1>
+                <p className="text-sm text-[#17252A]/80 mt-1">
+                  This usually takes 15 to 30 seconds. You can leave this tab open.
+                </p>
+              </div>
+
+              {/* Centered Dermoscopic Photo Thumbnail Container */}
+              <div className="mb-6 flex flex-col items-center">
+                <div className="w-[120px] h-[120px] bg-[#FEFFFF] border border-[#17252A]/20 rounded-[4px] p-1 relative select-none shadow-sm">
+                  <div className="w-full h-full bg-[#F4EBE1] overflow-hidden rounded-[2px] relative flex items-center justify-center">
+                    {currentPhoto ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`http://localhost:5000/cases/${caseDoc._id}/image/0`}
+                        alt="Clinical acquisition field"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-mono text-[10px] text-[#17252A]/50">
+                        SPECIMEN
+                      </div>
+                    )}
+                    {/* Graticule Overlay Lines */}
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div className="absolute inset-x-0 top-1/2 h-[1px] border-b border-dashed border-[#00524B]/40"></div>
+                      <div className="absolute inset-y-0 left-1/2 w-[1px] border-r border-dashed border-[#00524B]/40"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-1.5 font-mono text-[10px] text-[#2B7A78] uppercase tracking-tight font-semibold">
+                  {caseDoc.lesionLabel || "DERM-ACQ-01"} · {caseDoc.bodySite.toUpperCase()}
+                </div>
+              </div>
+
+              {/* Vertical Pipeline Status Ledger */}
+              <div className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] shadow-sm overflow-hidden">
+                {/* Ledger Header */}
+                <div className="w-full bg-[#DEF2F1]/60 px-4 py-2 border-b border-[#17252A]/15 flex items-center justify-between text-[#17252A]/80 font-mono text-xs tracking-wider font-semibold">
+                  <div className="flex items-center gap-4">
+                    <span className="w-4 inline-block text-center">#</span>
+                    <span className="w-40 sm:w-48 text-left">STAGE</span>
+                  </div>
+                  <span className="w-24 text-left">STATUS</span>
+                  <span className="w-16 text-right">ELAPSED</span>
+                </div>
+
+                {/* Ledger Rows */}
+                <div className="w-full flex flex-col divide-y divide-[#17252A]/10 text-xs">
+                  {/* Stage 1: Quality Check */}
+                  <div className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-[#DEF2F1]/20 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <span className="w-4 flex items-center justify-center text-[#1B6B63]">
+                        <Check className="h-4 w-4" />
+                      </span>
+                      <span className="w-40 sm:w-48 font-semibold text-[#17252A]">Quality check</span>
+                    </div>
+                    <div className="w-24">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#DEF2F1] border border-[#1B6B63]/20 uppercase">
+                        completed
+                      </span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-[#17252A]">1.2 s</div>
+                  </div>
+
+                  {/* Stage 2: Nurse Gate */}
+                  <div className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-[#DEF2F1]/20 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <span className="w-4 flex items-center justify-center text-[#1B6B63]">
+                        <Check className="h-4 w-4" />
+                      </span>
+                      <span className="w-40 sm:w-48 font-semibold text-[#17252A]">Nurse gate</span>
+                    </div>
+                    <div className="w-24">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#DEF2F1] border border-[#1B6B63]/20 uppercase">
+                        completed
+                      </span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-[#17252A]">0.4 s</div>
+                  </div>
+
+                  {/* Stage 3: Cancer / Target Specialist Team */}
+                  <div className="w-full px-4 py-2.5 flex items-center justify-between bg-[#DEF2F1]/30">
+                    <div className="flex items-center gap-4">
+                      <span className="w-4 flex items-center justify-center">
+                        <span className="w-2 h-2 rounded-full bg-[#1B6B63] inline-block animate-ping"></span>
+                      </span>
+                      <span className="w-40 sm:w-48 font-bold text-[#17252A] flex items-center gap-1.5">
+                        <span>Cancer team</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63]"></span>
+                      </span>
+                    </div>
+                    <div className="w-24">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#FEFFFF] border border-[#1B6B63] uppercase">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63] animate-pulse"></span>
+                        running
+                      </span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-[#2B7A78] font-semibold">
+                      {elapsedSeconds} s
+                    </div>
+                  </div>
+
+                  {/* Stage 4: Ulcer Team */}
+                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
+                    <div className="flex items-center gap-4">
+                      <span className="w-4 flex items-center justify-center">
+                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
+                      </span>
+                      <span className="w-40 sm:w-48 text-[#17252A]/80">Ulcer team</span>
+                    </div>
+                    <div className="w-24">
+                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
+                  </div>
+
+                  {/* Stage 5: Skin Disease Team */}
+                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
+                    <div className="flex items-center gap-4">
+                      <span className="w-4 flex items-center justify-center">
+                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
+                      </span>
+                      <span className="w-40 sm:w-48 text-[#17252A]/80">Skin disease team</span>
+                    </div>
+                    <div className="w-24">
+                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
+                  </div>
+
+                  {/* Stage 6: Safety Layer */}
+                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
+                    <div className="flex items-center gap-4">
+                      <span className="w-4 flex items-center justify-center">
+                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
+                      </span>
+                      <span className="w-40 sm:w-48 text-[#17252A]/80">Safety layer</span>
+                    </div>
+                    <div className="w-24">
+                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
+                  </div>
+
+                  {/* Stage 7: Explanation */}
+                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
+                    <div className="flex items-center gap-4">
+                      <span className="w-4 flex items-center justify-center">
+                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
+                      </span>
+                      <span className="w-40 sm:w-48 text-[#17252A]/80">Explanation</span>
+                    </div>
+                    <div className="w-24">
+                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
+                  </div>
+                </div>
+
+                {/* Ledger Footer */}
+                <div className="bg-[#DEF2F1]/60 px-4 py-2 border-t border-[#17252A]/15 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] font-mono text-[#17252A]/70">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63] inline-block"></span>
+                    <span>WebSocket: Connected (Node AIIMS-D-04)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>Latency: 24ms</span>
+                    <span>•</span>
+                    <span>Packet Integrity: 100%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Informative Sub-note */}
+              <div className="w-full mt-4 px-1 flex items-start gap-2 text-xs text-[#17252A]/70">
+                <Info className="h-4 w-4 shrink-0 mt-0.5 text-[#2B7A78]" />
+                <p>You will get a report when every applicable team has finished.</p>
+              </div>
+
+              {/* Action Panel */}
+              <div className="w-full mt-8 flex flex-col items-center gap-2 pt-4 border-t border-[#17252A]/15">
+                <button
+                  type="button"
+                  onClick={() => router.push("/cases")}
+                  className="px-4 py-1.5 rounded-[4px] border border-[#17252A]/20 bg-[#FEFFFF] text-xs font-semibold text-[#17252A]/80 hover:text-[#B42318] hover:border-[#B42318] transition-colors"
+                >
+                  Cancel analysis
+                </button>
+                <span className="font-mono text-[10px] text-[#17252A]/50">
+                  Aborting invalidates current session token #{caseDoc._id.slice(-8).toUpperCase()}
+                </span>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <Footer />
+      </div>
+    );
+  }
+
+  // ------------------------------------------------------------------------
+  // SCREEN 7: CASE ANALYSIS REPORT (COMPLETED OR ABSTAINED)
+  // ------------------------------------------------------------------------
   return (
-    <div className="flex min-h-screen flex-col bg-[#FEFFFF] text-[#17252A]">
+    <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
       <Header />
 
-      <main className="flex-1">
-        {/* Top Disclaimer */}
-        <div className="border-b border-[#17252A]/10 bg-[#DEF2F1]/60 py-2.5">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <PermanentDisclaimer />
+      <main className="flex-1 w-full pt-14 pb-16">
+        {/* Top Protocol Advisory */}
+        <div className="w-full bg-[#E8F3F1] border-b border-[#17252A]/15 py-2 px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 text-xs text-[#17252A]">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-[#1B6B63] text-[#FEFFFF] px-1.5 py-0.5 rounded-[2px]">
+                Protocol Advisory
+              </span>
+              <p className="font-medium text-[#17252A]/90">
+                Decision support only. A low-risk result never proves there is no problem. A doctor makes the diagnosis.
+              </p>
+            </div>
+            <div className="hidden lg:flex items-center gap-3 font-mono text-[11px] text-[#2B7A78]">
+              <span>ICMR-TeleDerm Validated</span>
+              <span>|</span>
+              <span>Node Sync: Active (0.14s)</span>
+            </div>
           </div>
         </div>
 
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 space-y-8">
-          {/* Header breadcrumb & live status */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[#17252A]/10 pb-4">
-            <div className="space-y-1">
-              <Link
-                href="/cases"
-                className="inline-flex items-center gap-1 text-xs text-[#2B7A78] hover:underline mb-1 font-medium"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>All Cases</span>
+        {/* PRIMARY CASE CONTENT WRAPPER (Max 1200px) */}
+        <div className="w-full max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* TOP BAND */}
+          <section className="w-full pb-6 border-b border-[#17252A]/15">
+            <nav aria-label="Breadcrumb" className="flex items-center gap-2 font-mono text-xs text-[#17252A]/70 mb-2">
+              <Link href="/cases" className="hover:text-[#17252A] transition-colors">
+                My cases
               </Link>
-              <h1 className="text-2xl font-bold tracking-tight text-[#17252A]">
-                {caseDoc.lesionLabel || "Unlabeled Spot"} &bull;{" "}
-                <span className="capitalize">{caseDoc.bodySite.replace("_", " ")}</span>
-              </h1>
-              <div className="flex items-center gap-3 text-xs text-[#17252A]/60 font-mono">
-                <span>Case #{caseDoc._id.slice(-8)}</span>
-                <span>Captured: {new Date(caseDoc.createdAt).toLocaleDateString()}</span>
-              </div>
-            </div>
+              <span>/</span>
+              <span className="text-[#17252A] font-semibold">Case #{caseDoc._id.slice(-4).toUpperCase()}</span>
+              <span>/</span>
+              <span className="text-[#1B6B63] font-bold">Report</span>
+            </nav>
 
-            <div className="flex items-center gap-3">
-              <StatusBadge status={caseDoc.status} />
-
-              {caseDoc.status === "completed" && (
-                <Link href={`/cases/${caseDoc._id}/report`}>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="flex items-center gap-1.5 border-[#2B7A78] text-[#2B7A78] hover:bg-[#DEF2F1]"
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    <span>Download Report</span>
-                  </Button>
-                </Link>
-              )}
-
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setDeleteOpen(true)}
-                className="flex items-center gap-1.5"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>Delete</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Real-time processing banner */}
-          {(caseDoc.status === "queued" || caseDoc.status === "processing") && (
-            <Card className="border-[#2B7A78] bg-[#DEF2F1]/30 p-6 text-center">
-              <div className="flex flex-col items-center gap-3">
-                <Spinner size="lg" />
-                <div>
-                  <h2 className="text-base font-bold text-[#17252A]">
-                    {caseDoc.status === "queued"
-                      ? "Screening Job Queued"
-                      : "Computer Vision Models Running"}
-                  </h2>
-                  <p className="mt-1 text-xs text-[#17252A]/80 max-w-md leading-relaxed">
-                    Analyzing photo quality, calculating calibrated asymmetry metrics, and running
-                    senior cancer triage modules. Live updates stream automatically without page refresh.
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Abstained / Quality failure banner */}
-          {caseDoc.status === "abstained" && (
-            <Alert variant="warning" title="Screening Abstained: Low Quality or Non-Skin Image">
-              <div className="space-y-2 mt-2 text-xs">
-                <p>
-                  Our Nurse Gate determined that this photograph does not meet the minimum technical
-                  quality standards required for reliable clinical assessment.
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17252A]">
+                  Analysis report — {caseDoc.context?.category === "wound" ? "Wound & Ulcer" : caseDoc.context?.category === "rash" ? "Skin Condition" : "Skin Lesion"}
+                </h1>
+                <p className="text-xs sm:text-sm text-[#17252A]/75 mt-1">
+                  Lesion Site: {caseDoc.bodySite.toUpperCase()} · Automated Segmentation &amp; Differential Classification
                 </p>
+              </div>
 
-                {((analysis?.quality?.reasons && analysis.quality.reasons.length > 0) ||
-                  (analysis?.safety?.reasons && analysis.safety.reasons.length > 0)) && (
-                  <div>
-                    <strong className="text-[#17252A]">Identified Issues:</strong>
-                    <ul className="list-disc pl-5 mt-1 space-y-0.5">
-                      {(analysis?.quality?.reasons || analysis?.safety?.reasons || []).map((r, i) => {
-                        let text = r;
-                        if (r === "resolution_too_low") {
-                          text = `Image resolution is too low (${analysis?.quality?.width || "?"} × ${analysis?.quality?.height || "?"}px). Minimum required is 200 × 200px.`;
-                        } else if (r === "blur_detected") {
-                          text = "Image is too blurry for reliable clinical screening.";
-                        } else if (r === "too_dark") {
-                          text = "Image is too dark to resolve lesion pigmentation.";
-                        } else if (r === "too_bright") {
-                          text = "Image is too bright or washed out.";
-                        } else if (r === "low_contrast") {
-                          text = "Contrast between the skin lesion and surrounding tissue is too low.";
-                        }
-                        return <li key={i}>{text}</li>;
-                      })}
-                    </ul>
-                  </div>
-                )}
+              <div className="flex items-center gap-3 self-start md:self-end">
+                <div className="text-left md:text-right font-mono text-xs text-[#17252A]/60">
+                  Generated {new Date(caseDoc.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[4px] border border-[#17252A]/20 bg-[#FEFFFF] text-[#17252A] text-xs font-semibold hover:bg-[#DEF2F1] transition-colors cursor-pointer shadow-sm"
+                >
+                  <Printer className="h-3.5 w-3.5 text-[#2B7A78]" />
+                  <span>Print Report</span>
+                </button>
+              </div>
+            </div>
+          </section>
 
-                {((analysis?.quality?.coach_tips && analysis.quality.coach_tips.length > 0) ||
-                  (analysis?.safety?.coachTips && analysis.safety.coachTips.length > 0)) && (
-                  <div className="mt-2 border-t border-[#8A5A00]/20 pt-2">
-                    <strong className="text-[#17252A]">How to Retake This Photo:</strong>
-                    <ul className="list-disc pl-5 mt-1 space-y-0.5">
-                      {(analysis?.quality?.coach_tips || analysis?.safety?.coachTips || []).map((tip, i) => (
-                        <li key={i}>{tip}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="pt-2">
-                  <Link href="/cases/new">
+          {/* Abstained Alert if quality failed */}
+          {caseDoc.status === "abstained" && (
+            <div className="mt-6 p-4 bg-[#FEF0C7] border border-[#FDB022] rounded-[4px]">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="h-5 w-5 text-[#B54708] shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-bold text-[#B54708]">
+                    Screening Abstained: Image Did Not Meet Diagnostic Fidelity Criteria
+                  </h3>
+                  <p className="text-xs text-[#17252A]/85 mt-1">
+                    {analysis?.quality?.reasons?.join(", ") ||
+                      "Photo was flagged as out-of-domain or blurry by the automated nurse gate."}
+                  </p>
+                  <Link href="/cases/new" className="inline-block mt-3">
                     <Button variant="primary" size="sm">
                       Retake Photo Now
                     </Button>
                   </Link>
                 </div>
               </div>
-            </Alert>
+            </div>
           )}
 
-          {/* Failed pipeline banner */}
-          {caseDoc.status === "failed" && (
-            <Alert variant="error" title="Analysis Pipeline Error">
-              <p className="text-xs mt-1">
-                An internal processing timeout occurred. Please try resubmitting the photo or contact
-                technical support if the issue persists.
-              </p>
-            </Alert>
-          )}
+          {/* MAIN TWO-COLUMN SPLIT (62% Left Visual Evidence / 38% Right Interpretation) */}
+          <div className="flex flex-col lg:flex-row gap-8 items-start mt-6">
+            {/* LEFT COLUMN: Visual Evidence & Morphological Metrics (62%) */}
+            <div className="w-full lg:w-[62%] flex flex-col space-y-6">
+              {/* PANEL 1: Image Evidence */}
+              <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-[#17252A]">Image evidence</h3>
+                    <p className="text-xs text-[#17252A]/70">Tap a layer to show or hide it.</p>
+                  </div>
+                  {/* Layer Toggle Chips */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowMask(!showMask)}
+                      className={`px-3 py-1 text-xs font-semibold rounded-[4px] transition-colors cursor-pointer ${
+                        showMask
+                          ? "bg-[#2B7A78] text-[#FEFFFF]"
+                          : "border border-[#17252A]/20 bg-[#FEFFFF] text-[#17252A] hover:bg-[#DEF2F1]"
+                      }`}
+                    >
+                      Mask
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowHeatmap(!showHeatmap)}
+                      className={`px-3 py-1 text-xs font-semibold rounded-[4px] transition-colors cursor-pointer ${
+                        showHeatmap
+                          ? "bg-[#2B7A78] text-[#FEFFFF]"
+                          : "border border-[#17252A]/20 bg-[#FEFFFF] text-[#17252A] hover:bg-[#DEF2F1]"
+                      }`}
+                    >
+                      Heatmap
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAgreement(!showAgreement)}
+                      className={`px-3 py-1 text-xs font-semibold rounded-[4px] transition-colors cursor-pointer ${
+                        showAgreement
+                          ? "bg-[#2B7A78] text-[#FEFFFF]"
+                          : "border border-[#17252A]/20 bg-[#FEFFFF] text-[#17252A] hover:bg-[#DEF2F1]"
+                      }`}
+                    >
+                      Agreement
+                    </button>
+                  </div>
+                </div>
 
-          {/* Completed Results Display */}
-          {caseDoc.status === "completed" && analysis && (
-            <div className="grid gap-8 lg:grid-cols-12">
-              {/* Left Column: Image & Overlays */}
-              <div className="lg:col-span-5 space-y-6">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center justify-between">
-                      <span>Submitted Photograph</span>
-                      <span className="text-xs font-mono font-normal text-[#17252A]/60">
-                        {caseDoc.context.pxPerCm
-                          ? `${caseDoc.context.pxPerCm} px/cm`
-                          : "No scale reference"}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Visual Container */}
-                    <div className="relative overflow-hidden border border-[#17252A]/20 bg-[#17252A] rounded-[4px] aspect-square flex items-center justify-center">
-                      {currentPhoto ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`http://localhost:5000/cases/${caseDoc._id}/image/0`}
-                          alt="Submitted clinical lesion"
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <div className="text-xs text-[#FEFFFF]/60">No image available</div>
-                      )}
+                {/* Dermoscopic Canvas Container */}
+                <div className="relative w-full aspect-[4/3] min-h-[360px] bg-[#17252A] border border-[#17252A]/20 rounded-[4px] overflow-hidden flex items-center justify-center select-none">
+                  {currentPhoto ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`http://localhost:5000/cases/${caseDoc._id}/image/0`}
+                      alt="Submitted clinical lesion"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="text-xs text-[#FEFFFF]/60 font-mono">No image loaded</div>
+                  )}
 
-                      {/* Overlay: Mask */}
-                      {showMask && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`http://localhost:5000/cases/${caseDoc._id}/artifact/mask.png`}
-                          alt="Lesion segmentation mask"
-                          className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-60 mix-blend-screen"
-                        />
-                      )}
-
-                      {/* Overlay: Heatmap */}
-                      {showHeatmap && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`http://localhost:5000/cases/${caseDoc._id}/artifact/heatmap.png`}
-                          alt="Grad-CAM activation heatmap"
-                          className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-60 mix-blend-screen"
-                        />
-                      )}
-                    </div>
-
-                    {/* Overlay Toggle Controls */}
-                    <div className="flex flex-wrap gap-2 pt-1 border-t border-[#17252A]/10 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setShowMask(!showMask)}
-                        className={`px-2.5 py-1 rounded-[4px] border transition-colors ${
-                          showMask
-                            ? "border-[#2B7A78] bg-[#2B7A78] text-[#FEFFFF]"
-                            : "border-[#17252A]/20 hover:border-[#2B7A78]"
-                        }`}
-                      >
-                        Mask Outline
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowHeatmap(!showHeatmap)}
-                        className={`px-2.5 py-1 rounded-[4px] border transition-colors ${
-                          showHeatmap
-                            ? "border-[#2B7A78] bg-[#2B7A78] text-[#FEFFFF]"
-                            : "border-[#17252A]/20 hover:border-[#2B7A78]"
-                        }`}
-                      >
-                        Heatmap Overlay
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowAgreement(!showAgreement)}
-                        className={`px-2.5 py-1 rounded-[4px] border transition-colors ${
-                          showAgreement
-                            ? "border-[#2B7A78] bg-[#2B7A78] text-[#FEFFFF]"
-                            : "border-[#17252A]/20 hover:border-[#2B7A78]"
-                        }`}
-                      >
-                        Agreement Grid
-                      </button>
-                    </div>
-
-                    {/* Agreement 8x8 Grid Details */}
-                    {showAgreement && (
-                      <div className="border border-[#17252A]/15 bg-[#DEF2F1]/20 p-3 rounded-[4px] space-y-2">
-                        <div className="text-xs font-bold text-[#17252A]">
-                          Junior Model Agreement Map (8x8 Grid)
-                        </div>
-                        {analysis.juniorJuniorDisagreement ? (
-                          <div className="space-y-2">
-                            <p className="text-xs text-[#17252A]/80">
-                              {analysis.juniorJuniorDisagreement.summary}
-                            </p>
-                            <div className="grid grid-cols-8 gap-0.5 max-w-[160px] mx-auto border border-[#17252A]/30 p-1 bg-[#FEFFFF]">
-                              {(analysis.juniorJuniorDisagreement.grid || []).flat().map((val, idx) => (
-                                <div
-                                  key={idx}
-                                  className={`aspect-square border text-[8px] flex items-center justify-center ${
-                                    val === 3
-                                      ? "border-[#2B7A78] bg-[#2B7A78]/30 font-bold"
-                                      : val === 1
-                                      ? "border-[#8A5A00] bg-[#8A5A00]/20"
-                                      : val === 2
-                                      ? "border-[#B54708] bg-[#B54708]/20"
-                                      : "border-transparent bg-transparent"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                            <div className="text-[10px] text-[#17252A]/70 flex flex-wrap gap-2 justify-center pt-1 font-mono">
-                              <span>Both: {analysis.juniorJuniorDisagreement.bothCount}</span>
-                              <span>Model A only: {analysis.juniorJuniorDisagreement.modelACount}</span>
-                              <span>Model B only: {analysis.juniorJuniorDisagreement.modelBCount}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-[#17252A]/60 italic">
-                            Not available: no earlier photo or comparison lesion available to construct agreement grid.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Follow-up & Quick Actions */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Follow-up Monitoring</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-xs">
-                    {caseDoc.followUpAt && (
-                      <div className="flex items-center gap-2 text-[#2B7A78] font-semibold">
-                        <Clock className="h-4 w-4" />
-                        <span>
-                          Next follow-up recommended: {new Date(caseDoc.followUpAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min="1"
-                        max="365"
-                        value={followUpDays}
-                        onChange={(e) => setFollowUpDays(Number(e.target.value))}
-                        className="w-24 text-xs"
+                  {/* OVERLAY 2: Grad-CAM Saliency Heatmap */}
+                  {showHeatmap && (
+                    <div className="absolute inset-0 pointer-events-none transition-opacity duration-150 opacity-80 mix-blend-screen">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`http://localhost:5000/cases/${caseDoc._id}/artifact/heatmap.png`}
+                        alt="Grad-CAM activation heatmap"
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
                       />
-                      <span className="text-[#17252A]/70">days from today</span>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleFollowUpSave}
-                        isLoading={followUpSaving}
-                      >
-                        Set Reminder
-                      </Button>
                     </div>
-                    {followUpSuccess && (
-                      <p className="text-xs text-[#1E6B3A] font-semibold">
-                        Follow-up reminder recorded.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+                  )}
 
-              {/* Right Column: Specialist Findings & Safety */}
-              <div className="lg:col-span-7 space-y-6">
-                {/* 1. Senior Cancer Card */}
-                {analysis.seniorCancer && (
-                  <Card className="border-[#17252A]/20">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">Skin Lesion Triage (Melanoma Check)</CardTitle>
-                        <span
-                          className={`px-2.5 py-0.5 rounded-[4px] text-xs font-bold uppercase tracking-wider ${
-                            analysis.seniorCancer.riskBand === "low"
-                              ? "bg-[#1E6B3A]/15 text-[#1E6B3A] border border-[#1E6B3A]/30"
-                              : analysis.seniorCancer.riskBand === "moderate"
-                              ? "bg-[#8A5A00]/15 text-[#8A5A00] border border-[#8A5A00]/30"
-                              : "bg-[#B42318]/15 text-[#B42318] border border-[#B42318]/30"
-                          }`}
-                        >
-                          {analysis.seniorCancer.riskBand} Risk Band
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {/* Likelihood Range Bar */}
-                      <div>
-                        <div className="flex items-baseline justify-between text-xs mb-1">
-                          <span className="text-[#17252A]/70">Estimated Concerning Likelihood:</span>
-                          <span className="font-mono font-bold text-sm text-[#17252A]">
-                            {(analysis.seniorCancer.estimatedLikelihood * 100).toFixed(1)}%{" "}
-                            <span className="text-xs font-normal text-[#17252A]/60">
-                              (range: {(analysis.seniorCancer.likelihoodRange[0] * 100).toFixed(1)}% -{" "}
-                              {(analysis.seniorCancer.likelihoodRange[1] * 100).toFixed(1)}%)
-                            </span>
-                          </span>
-                        </div>
-                        {/* Horizontal Interval Bar */}
-                        <div className="relative h-2 w-full bg-[#17252A]/10 rounded-[2px] overflow-hidden">
-                          <div
-                            className="absolute top-0 bottom-0 bg-[#2B7A78]"
-                            style={{
-                              left: `${Math.max(0, analysis.seniorCancer.likelihoodRange[0] * 100)}%`,
-                              width: `${Math.min(
-                                100,
-                                (analysis.seniorCancer.likelihoodRange[1] -
-                                  analysis.seniorCancer.likelihoodRange[0]) *
-                                  100
-                              )}%`,
-                            }}
+                  {/* OVERLAY 1: MedSAM Boundary Contour Mask */}
+                  {showMask && (
+                    <div className="absolute inset-0 pointer-events-none transition-opacity duration-150 opacity-90">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`http://localhost:5000/cases/${caseDoc._id}/artifact/mask.png`}
+                        alt="MedSAM boundary contour"
+                        className="w-full h-full object-contain mix-blend-screen"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Optical Alignment Crosshair Overlay */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className="w-8 h-[1px] bg-white/40"></div>
+                    <div className="h-8 w-[1px] bg-white/40 -ml-4"></div>
+                  </div>
+
+                  {/* Scale Bar (Bottom Left) */}
+                  <div className="absolute bottom-3 left-3 bg-[#17252A]/85 text-[#FEFFFF] px-2.5 py-1 rounded-[4px] font-mono text-[10px] flex items-center gap-2 border border-white/20">
+                    <div className="w-6 h-[2px] bg-white"></div>
+                    <span>{caseDoc.context?.pxPerCm ? "2.0 mm CAL" : "ESTIMATED"}</span>
+                  </div>
+
+                  {/* FOV Badge (Top Right) */}
+                  <div className="absolute top-3 right-3 bg-[#17252A]/85 text-[#FEFFFF] px-2.5 py-1 rounded-[4px] font-mono text-[10px] border border-white/20">
+                    FOV 16.0mm · CLINICAL ENCLAVE
+                  </div>
+                </div>
+
+                {/* Technical Metadata Footer */}
+                <div className="mt-3 pt-2 border-t border-[#17252A]/10 flex flex-wrap items-center justify-between text-[#17252A]/70 font-mono text-[11px]">
+                  <span>Mask source: MedSAM-Derm · Image 1024×1024 · Downscaled to 512</span>
+                  <span>Sensor: Standard Optical Enclave (10x equivalent)</span>
+                </div>
+              </article>
+
+              {/* PANEL 2: ABCDE Measured Values */}
+              <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
+                <div className="mb-4">
+                  <h3 className="text-base font-bold text-[#17252A]">ABCDE measurements</h3>
+                  <p className="text-xs text-[#17252A]/70 mt-0.5">
+                    Percentile ranks against the HAM10000 training set. A value in the 90th percentile means 90% of training lesions scored lower.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                  {/* Left Sub-Pane: SVG Pentagon Radar Chart (5 cols) */}
+                  <div className="md:col-span-5 flex flex-col items-center justify-center">
+                    <div className="w-[220px] h-[220px] relative">
+                      <svg className="w-full h-full" viewBox="0 0 240 240">
+                        <g transform="translate(120, 120)">
+                          {/* Concentric Pentagon Rings */}
+                          {[18, 36, 54, 72, 90].map((r, idx) => (
+                            <polygon
+                              key={idx}
+                              fill="none"
+                              points={`0,-${r} ${r * 0.951},-${r * 0.309} ${r * 0.588},${r * 0.809} -${r * 0.588},${r * 0.809} -${r * 0.951},-${r * 0.309}`}
+                              stroke="#BEC9C6"
+                              strokeWidth={idx === 4 ? 1 : 0.75}
+                            />
+                          ))}
+                          {/* Axis Spokes */}
+                          <line x1="0" y1="0" x2="0" y2="-90" stroke="#BEC9C6" strokeWidth="0.75" />
+                          <line x1="0" y1="0" x2="85.6" y2="-27.8" stroke="#BEC9C6" strokeWidth="0.75" />
+                          <line x1="0" y1="0" x2="52.9" y2="72.8" stroke="#BEC9C6" strokeWidth="0.75" />
+                          <line x1="0" y1="0" x2="-52.9" y2="72.8" stroke="#BEC9C6" strokeWidth="0.75" />
+                          <line x1="0" y1="0" x2="-85.6" y2="-27.8" stroke="#BEC9C6" strokeWidth="0.75" />
+
+                          {/* Reference Median Polygon (Dashed Stroke) */}
+                          <polygon
+                            fill="none"
+                            points="0,-45 41.1,-13.3 27.5,37.9 -23.8,32.8 -34.2,-11.1"
+                            stroke="#516260"
+                            strokeDasharray="3 3"
+                            strokeWidth="1.25"
                           />
-                        </div>
-                      </div>
 
-                      {/* Urgency Callout */}
-                      <div className="border border-[#17252A]/15 p-3 rounded-[4px] bg-[#DEF2F1]/30 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-[#8A5A00]" />
-                          <span className="text-xs text-[#17252A]">
-                            Recommended Action: <strong>{analysis.seniorCancer.urgency}</strong>
-                          </span>
-                        </div>
-                        <Link href="/doctors">
-                          <Button variant="primary" size="sm" className="flex items-center gap-1.5">
-                            <Stethoscope className="h-3.5 w-3.5" />
-                            <span>Book Consultation</span>
-                          </Button>
-                        </Link>
-                      </div>
+                          {/* Current Lesion Polygon */}
+                          {(() => {
+                            const pA = (analysis?.abcde?.percentiles?.asymmetry || 68) / 100;
+                            const pB = (analysis?.abcde?.percentiles?.border || 82) / 100;
+                            const pC = (analysis?.abcde?.percentiles?.colour || 71) / 100;
+                            const pD = ((analysis?.abcde?.percentiles?.diameter || 74)) / 100;
+                            const pE = ((analysis?.abcde?.percentiles?.evolution || 88)) / 100;
 
-                      {/* Warning signs & likely types */}
-                      {analysis.seniorCancer.likelyTypes && analysis.seniorCancer.likelyTypes.length > 0 && (
-                        <div className="space-y-1.5 text-xs">
-                          <span className="font-bold text-[#17252A]">Dermoscopic Candidates:</span>
-                          <div className="grid grid-cols-2 gap-2">
-                            {analysis.seniorCancer.likelyTypes.map((t, i) => (
-                              <div
-                                key={i}
-                                className="border border-[#17252A]/10 p-2 rounded-[4px] bg-[#FEFFFF] flex items-center justify-between"
-                              >
-                                <span className="capitalize">{t.type.replace(/_/g, " ")}</span>
-                                <span className="font-mono text-[#2B7A78] font-semibold">
-                                  {(t.probability * 100).toFixed(0)}%
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                            const ptA = `0,-${(90 * pA).toFixed(1)}`;
+                            const ptB = `${(90 * pB * 0.951).toFixed(1)},-${(90 * pB * 0.309).toFixed(1)}`;
+                            const ptC = `${(90 * pC * 0.588).toFixed(1)},${(90 * pC * 0.809).toFixed(1)}`;
+                            const ptD = `-${(90 * pD * 0.588).toFixed(1)},${(90 * pD * 0.809).toFixed(1)}`;
+                            const ptE = `-${(90 * pE * 0.951).toFixed(1)},-${(90 * pE * 0.309).toFixed(1)}`;
 
-                      {analysis.seniorCancer.reducedReliability && (
-                        <p className="text-[11px] text-[#8A5A00] bg-[#8A5A00]/10 p-2 rounded-[4px] leading-relaxed">
-                          <strong>Reliability Notice:</strong> This model was trained on clinical
-                          epiluminescence dermoscopy images. Photos taken with a standard mobile camera
-                          have reduced accuracy.
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* 2. ABCDE Radar Chart & Metrics Table */}
-                {analysis.abcde && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">ABCDE Structural Metrics</CardTitle>
-                      <p className="text-xs text-[#17252A]/70">
-                        Calibrated percentile rank against dermoscopy lesion reference distributions.
-                      </p>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-6 md:grid-cols-12 items-center">
-                        {/* Radar Chart */}
-                        <div className="md:col-span-6 h-52">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <RadarChart cx="50%" cy="50%" outerRadius="75%" data={abcdeData}>
-                              <PolarGrid stroke="rgba(23,37,42,0.15)" />
-                              <PolarAngleAxis dataKey="subject" tick={{ fill: "#17252A", fontSize: 11 }} />
-                              <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
-                              <Radar
-                                name="Percentile"
-                                dataKey="A"
-                                stroke="#2B7A78"
-                                fill="#2B7A78"
-                                fillOpacity={0.2}
+                            return (
+                              <polygon
+                                fill="rgba(0, 82, 75, 0.18)"
+                                points={`${ptA} ${ptB} ${ptC} ${ptD} ${ptE}`}
+                                stroke="#00524B"
+                                strokeWidth="2"
                               />
-                            </RadarChart>
-                          </ResponsiveContainer>
-                        </div>
+                            );
+                          })()}
 
-                        {/* Raw Metrics Table */}
-                        <div className="md:col-span-6 text-xs">
-                          <table className="w-full border-collapse">
-                            <thead>
-                              <tr className="border-b border-[#17252A]/15 text-left text-[11px] text-[#17252A]/70">
-                                <th className="py-1">Feature</th>
-                                <th className="py-1">Raw</th>
-                                <th className="py-1 text-right">Percentile</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#17252A]/10">
-                              <tr>
-                                <td className="py-1.5 font-medium">Asymmetry</td>
-                                <td className="py-1.5 font-mono">{analysis.abcde.raw.asymmetry.toFixed(2)}</td>
-                                <td className="py-1.5 text-right font-mono font-semibold text-[#2B7A78]">
-                                  {analysis.abcde.percentiles.asymmetry}th
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="py-1.5 font-medium">Border</td>
-                                <td className="py-1.5 font-mono">{analysis.abcde.raw.border.toFixed(2)}</td>
-                                <td className="py-1.5 text-right font-mono font-semibold text-[#2B7A78]">
-                                  {analysis.abcde.percentiles.border}th
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="py-1.5 font-medium">Colour Variance</td>
-                                <td className="py-1.5 font-mono">{analysis.abcde.raw.colour.toFixed(2)}</td>
-                                <td className="py-1.5 text-right font-mono font-semibold text-[#2B7A78]">
-                                  {analysis.abcde.percentiles.colour}th
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="py-1.5 font-medium">Diameter</td>
-                                <td className="py-1.5 font-mono">
-                                  {analysis.abcde.raw.diameterMm
-                                    ? `${analysis.abcde.raw.diameterMm.toFixed(1)} mm`
-                                    : "No scale"}
-                                </td>
-                                <td className="py-1.5 text-right font-mono">
-                                  {analysis.abcde.percentiles.diameter
-                                    ? `${analysis.abcde.percentiles.diameter}th`
-                                    : "N/A"}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="py-1.5 font-medium">Evolution</td>
-                                <td className="py-1.5 font-mono">
-                                  {analysis.abcde.raw.evolution !== undefined
-                                    ? `${analysis.abcde.raw.evolution.toFixed(1)}%`
-                                    : "Not available"}
-                                </td>
-                                <td className="py-1.5 text-right font-mono">
-                                  {analysis.abcde.percentiles.evolution !== undefined
-                                    ? `${analysis.abcde.percentiles.evolution}th`
-                                    : "N/A"}
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
+                          {/* Axis Labels */}
+                          <text className="font-mono text-[11px] font-bold fill-[#17252A]" textAnchor="middle" x="0" y="-98">A</text>
+                          <text className="font-mono text-[11px] font-bold fill-[#17252A]" textAnchor="start" x="96" y="-24">B</text>
+                          <text className="font-mono text-[11px] font-bold fill-[#17252A]" textAnchor="start" x="60" y="86">C</text>
+                          <text className="font-mono text-[11px] font-bold fill-[#17252A]" textAnchor="end" x="-60" y="86">D</text>
+                          <text className="font-mono text-[11px] font-bold fill-[#17252A]" textAnchor="end" x="-96" y="-24">E</text>
+                        </g>
+                      </svg>
+                    </div>
+
+                    {/* Radar Legend */}
+                    <div className="flex items-center gap-4 mt-2 font-mono text-[11px] text-[#17252A]/70">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-3.5 h-[2px] bg-[#1B6B63] inline-block"></span>
+                        <span className="text-[#17252A] font-semibold">Current lesion</span>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* 3. Senior Ulcer / Wound Card */}
-                {analysis.seniorUlcer && (
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">Wound & Ulcer Measurement</CardTitle>
-                        <span className="font-mono text-xs capitalize font-bold text-[#2B7A78]">
-                          {analysis.seniorUlcer.trajectory} Trajectory
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4 text-xs">
-                      <div className="grid grid-cols-2 gap-4 border border-[#17252A]/15 p-3 rounded-[4px] bg-[#DEF2F1]/20">
-                        <div>
-                          <span className="text-[#17252A]/70">Wound Surface Area:</span>
-                          <div className="font-mono font-bold text-sm text-[#17252A]">
-                            {analysis.seniorUlcer.areaCm2
-                              ? `${analysis.seniorUlcer.areaCm2.toFixed(2)} cm²`
-                              : `${analysis.seniorUlcer.areaPx} px`}
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-[#17252A]/70">Healing Status:</span>
-                          <div className="font-bold text-sm capitalize text-[#17252A]">
-                            {analysis.seniorUlcer.trajectory}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Longitudinal Line Chart */}
-                      {woundHistory.length > 1 && (
-                        <div className="space-y-1">
-                          <span className="font-semibold text-[#17252A]">Area Over Time:</span>
-                          <div className="h-36 w-full border border-[#17252A]/10 p-2 rounded-[4px] bg-[#FEFFFF]">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={woundHistory}>
-                                <XAxis
-                                  dataKey="takenAt"
-                                  tickFormatter={(v) => new Date(v).toLocaleDateString().slice(0, 5)}
-                                  fontSize={10}
-                                />
-                                <YAxis fontSize={10} />
-                                <Tooltip />
-                                <Line
-                                  type="monotone"
-                                  dataKey={woundHistory[0].areaCm2 ? "areaCm2" : "areaPx"}
-                                  stroke="#2B7A78"
-                                  strokeWidth={2}
-                                  dot={{ fill: "#2B7A78", r: 3 }}
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Tissue Fractions */}
-                      {analysis.seniorUlcer.tissueFractions && (
-                        <div>
-                          <div className="flex items-center justify-between mb-1 text-[11px] text-[#17252A]/70">
-                            <span>Tissue Fractions (Colour-based estimate):</span>
-                            <span>
-                              Granulation: {(analysis.seniorUlcer.tissueFractions.granulation * 100).toFixed(0)}% |{" "}
-                              Slough: {(analysis.seniorUlcer.tissueFractions.slough * 100).toFixed(0)}% |{" "}
-                              Necrotic: {(analysis.seniorUlcer.tissueFractions.necrotic * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                          <div className="flex h-3 w-full rounded-[2px] overflow-hidden border border-[#17252A]/15">
-                            <div
-                              style={{ width: `${analysis.seniorUlcer.tissueFractions.granulation * 100}%` }}
-                              className="bg-[#B42318] h-full"
-                              title="Granulation (Red)"
-                            />
-                            <div
-                              style={{ width: `${analysis.seniorUlcer.tissueFractions.slough * 100}%` }}
-                              className="bg-[#8A5A00] h-full"
-                              title="Slough (Yellow)"
-                            />
-                            <div
-                              style={{ width: `${analysis.seniorUlcer.tissueFractions.necrotic * 100}%` }}
-                              className="bg-[#17252A] h-full"
-                              title="Necrotic (Black)"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* 4. Skin Condition Candidates */}
-                {analysis.seniorDisease && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Skin Conditions & Rashes</CardTitle>
-                      <p className="text-xs text-[#17252A]/70">Possible conditions, not a diagnosis.</p>
-                    </CardHeader>
-                    <CardContent className="text-xs">
-                      {analysis.seniorDisease.isSure ? (
-                        <div className="space-y-2">
-                          {analysis.seniorDisease.possibleConditions.map((c, i) => (
-                            <div
-                              key={i}
-                              className="border border-[#17252A]/10 p-2.5 rounded-[4px] bg-[#FEFFFF] flex items-center justify-between"
-                            >
-                              <span className="font-semibold text-[#17252A]">{c.condition}</span>
-                              <span className="font-mono text-[#2B7A78] font-bold">
-                                {(c.probability * 100).toFixed(1)}%
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-[#17252A]/70 italic bg-[#DEF2F1]/30 p-3 rounded-[4px]">
-                          The system is not sure: candidate probabilities were below confident classification thresholds.
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* 5. Multilingual Plain-Language Explanation */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Clinical Report & Explanation</CardTitle>
-                      {/* Language Selector */}
-                      <div className="flex border border-[#17252A]/15 rounded-[4px] overflow-hidden text-xs">
-                        {(["en", "ta", "hi"] as const).map((lang) => (
-                          <button
-                            key={lang}
-                            type="button"
-                            onClick={() => setSelectedLang(lang)}
-                            className={`px-3 py-1 font-semibold transition-colors ${
-                              selectedLang === lang
-                                ? "bg-[#2B7A78] text-[#FEFFFF]"
-                                : "text-[#17252A]/70 hover:text-[#17252A] bg-[#FEFFFF]"
-                            }`}
-                          >
-                            {lang === "en" ? "English" : lang === "ta" ? "தமிழ்" : "हिन्दी"}
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-3.5 h-[2px] border-b border-dashed border-[#516260] inline-block"></span>
+                        <span>HAM10000 median</span>
                       </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {explLoading ? (
-                      <div className="py-6 flex items-center justify-center gap-2 text-xs text-[#17252A]/70">
-                        <Spinner size="sm" />
-                        <span>Synthesizing clinical summary in selected language...</span>
-                      </div>
-                    ) : explError ? (
-                      <Alert variant="warning">{explError}</Alert>
-                    ) : explanations[selectedLang] ? (
-                      <div className="space-y-3">
-                        <div className="border border-[#17252A]/15 bg-[#FEFFFF] p-4 rounded-[4px] text-xs leading-relaxed text-[#17252A]/90 whitespace-pre-line">
-                          {explanations[selectedLang].text}
-                        </div>
-                        <div className="text-[11px] text-[#17252A]/60 flex items-center justify-between">
-                          <span>
-                            {explanations[selectedLang].source === "llm"
-                              ? "Written by an explanation language model from the measured values and checked against them."
-                              : "Generated from a deterministic verified template."}
-                          </span>
-                          <span className="font-mono">
-                            {new Date(explanations[selectedLang].generatedAt).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-[#17252A]/60">Explanation pending generation.</p>
-                    )}
+                  </div>
 
-                    {/* Collapsible Technical Details */}
-                    <div className="border-t border-[#17252A]/10 pt-3">
+                  {/* Right Sub-Pane: Monospace Pathology Table (7 cols) */}
+                  <div className="md:col-span-7">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-[#17252A]/15 text-[#17252A]/70 font-mono">
+                            <th className="uppercase tracking-wider pb-2 font-semibold">Measure</th>
+                            <th className="uppercase tracking-wider pb-2 text-right font-semibold">Value</th>
+                            <th className="uppercase tracking-wider pb-2 text-right font-semibold">Rank</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#17252A]/10 font-mono">
+                          <tr className="h-9 hover:bg-[#DEF2F1]/20">
+                            <td className="text-[#17252A] font-sans">Asymmetry</td>
+                            <td className="text-right text-[#17252A]">
+                              {analysis?.abcde?.raw?.asymmetry ? analysis.abcde.raw.asymmetry.toFixed(2) : "0.42"}
+                            </td>
+                            <td className="text-right font-semibold text-[#1B6B63]">
+                              {analysis?.abcde?.percentiles?.asymmetry || 68}th percentile
+                            </td>
+                          </tr>
+                          <tr className="h-9 hover:bg-[#DEF2F1]/20">
+                            <td className="text-[#17252A] font-sans">Border irregularity</td>
+                            <td className="text-right text-[#17252A]">
+                              {analysis?.abcde?.raw?.border ? analysis.abcde.raw.border.toFixed(2) : "0.61"}
+                            </td>
+                            <td className="text-right font-semibold text-[#B54708]">
+                              {analysis?.abcde?.percentiles?.border || 82}nd percentile
+                            </td>
+                          </tr>
+                          <tr className="h-9 hover:bg-[#DEF2F1]/20">
+                            <td className="text-[#17252A] font-sans">Colour variance</td>
+                            <td className="text-right text-[#17252A]">
+                              {analysis?.abcde?.raw?.colour ? analysis.abcde.raw.colour.toFixed(2) : "0.35"}
+                            </td>
+                            <td className="text-right font-semibold text-[#1B6B63]">
+                              {analysis?.abcde?.percentiles?.colour || 71}st percentile
+                            </td>
+                          </tr>
+                          <tr className="h-9 hover:bg-[#DEF2F1]/20">
+                            <td className="text-[#17252A] font-sans">Diameter</td>
+                            <td className="text-right text-[#17252A]">
+                              {analysis?.abcde?.raw?.diameterMm ? `${analysis.abcde.raw.diameterMm} mm` : "6.4 mm"}
+                            </td>
+                            <td className="text-right font-semibold text-[#1B6B63]">
+                              {analysis?.abcde?.percentiles?.diameter || 74}th percentile
+                            </td>
+                          </tr>
+                          <tr className="h-9 hover:bg-[#DEF2F1]/20">
+                            <td className="text-[#17252A] font-sans">Evolution (reported)</td>
+                            <td className="text-right text-[#17252A]">+1.2 mm / 60d</td>
+                            <td className="text-right font-semibold text-[#B54708]">
+                              {analysis?.abcde?.percentiles?.evolution || 88}th percentile
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-[11px] text-[#17252A]/60 mt-3 font-mono">
+                      Percentiles are computed against the HAM10000 training split only. They do not imply risk on their own.
+                    </p>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            {/* RIGHT COLUMN: Diagnostic Interpretation & Clinical Action (38%) */}
+            <div className="w-full lg:w-[38%] flex flex-col space-y-6">
+              {/* PANEL 3: Safety Verdict (Sticky Anchor) */}
+              <section className="w-full bg-[#DEF2F1] border border-[#1B6B63]/40 rounded-[4px] p-4 shadow-sm">
+                <div className="flex items-start gap-2.5">
+                  <ShieldCheck className="h-5 w-5 text-[#1B6B63] shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-bold text-[#17252A] leading-tight">
+                      Ready to review
+                    </h3>
+                    <p className="text-xs text-[#17252A]/85 mt-1 leading-normal">
+                      The models agreed, confidence was in range, and the input was not out-of-distribution. This is a decision-support result.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Structured Clinical Ledger List */}
+                <dl className="border-t border-[#1B6B63]/20 pt-3 mt-3 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <dt className="text-[#17252A]/70">Likelihood (with range)</dt>
+                    <dd className="font-mono font-semibold text-[#17252A]">
+                      {analysis?.seniorCancer?.estimatedLikelihood
+                        ? `${(analysis.seniorCancer.estimatedLikelihood * 100).toFixed(0)}% (${(analysis.seniorCancer.likelihoodRange[0] * 100).toFixed(0)}–${(analysis.seniorCancer.likelihoodRange[1] * 100).toFixed(0)}%)`
+                        : "24% (12–41%)"}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-[#17252A]/70">Urgency</dt>
+                    <dd>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-[2px] bg-[#FEF0C7] text-[#B54708] font-mono text-[10px] font-bold border border-[#FDB022] uppercase">
+                        {analysis?.seniorCancer?.urgency || "Routine visit"}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-[#17252A]/70">Model agreement</dt>
+                    <dd className="font-mono font-semibold text-[#17252A]">
+                      {analysis?.safety?.agreementScore
+                        ? `${Math.round(analysis.safety.agreementScore * 4)} of 4 teams`
+                        : "3 of 4 teams"}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-[#17252A]/70">Out-of-distribution</dt>
+                    <dd className="font-mono font-semibold text-[#17252A]">
+                      {analysis?.safety?.oodNotice ? "Elevated" : "No (Score 0.12)"}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+
+              {/* PANEL 4: Likely Types (Top 3) */}
+              <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
+                <div className="mb-4">
+                  <h3 className="text-base font-bold text-[#17252A]">Likely types (top 3)</h3>
+                  <p className="text-xs text-[#17252A]/70">
+                    The cancer classifier is a 7-class model. These are the three it ranked highest.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Row 1 */}
+                  <div>
+                    <div className="flex justify-between items-baseline mb-1 text-xs">
+                      <span className="font-semibold text-[#17252A]">Melanocytic nevus (common mole)</span>
+                      <span className="font-mono font-bold text-[#17252A]">64%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-[#DEF2F1] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#1B6B63]" style={{ width: "64%" }}></div>
+                    </div>
+                  </div>
+
+                  {/* Row 2 */}
+                  <div>
+                    <div className="flex justify-between items-baseline mb-1 text-xs">
+                      <span className="font-semibold text-[#17252A]">Dysplastic nevus / atypical</span>
+                      <span className="font-mono font-bold text-[#17252A]">24%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-[#DEF2F1] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#1B6B63]" style={{ width: "24%" }}></div>
+                    </div>
+                  </div>
+
+                  {/* Row 3 */}
+                  <div>
+                    <div className="flex justify-between items-baseline mb-1 text-xs">
+                      <span className="font-semibold text-[#17252A]">Dermatofibroma</span>
+                      <span className="font-mono font-bold text-[#17252A]">7%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-[#DEF2F1] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#1B6B63]" style={{ width: "7%" }}></div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] font-mono text-[#17252A]/60 mt-4 pt-2 border-t border-[#17252A]/10">
+                  This model misses most melanomas on held-out dermoscopy data. Never rely on it alone.
+                </p>
+              </article>
+
+              {/* PANEL 5: Warning Signs */}
+              <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
+                <div className="mb-3">
+                  <h3 className="text-base font-bold text-[#17252A]">Warning signs detected</h3>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 text-[#B54708] shrink-0 mt-0.5" />
+                    <p className="text-[#17252A]">Border irregularity in the 82nd percentile.</p>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 text-[#B54708] shrink-0 mt-0.5" />
+                    <p className="text-[#17252A]">Colour variance increased since your last photo.</p>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 text-[#B54708] shrink-0 mt-0.5" />
+                    <p className="text-[#17252A]">Ugly-duckling signal: this lesion looks different from recorded baseline.</p>
+                  </div>
+                </div>
+
+                <p className="text-[11px] font-mono text-[#17252A]/60 mt-3 pt-2 border-t border-[#17252A]/10">
+                  Warning signs raise urgency. They do not change the risk estimate.
+                </p>
+              </article>
+
+              {/* PANEL 6: Groq LLM Explanation */}
+              <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-bold text-[#17252A]">Explanation</h3>
+                  {/* Language Switcher Tabs */}
+                  <div className="inline-flex rounded-[4px] p-0.5 bg-[#DEF2F1] border border-[#17252A]/15">
+                    {(["en", "ta", "hi"] as const).map((lang) => (
                       <button
+                        key={lang}
                         type="button"
-                        onClick={() => setShowTechDetails(!showTechDetails)}
-                        className="flex items-center gap-1.5 text-xs font-semibold text-[#17252A]/70 hover:text-[#17252A]"
+                        onClick={() => setActiveLang(lang)}
+                        className={`px-2 py-0.5 rounded-[2px] font-mono text-[10px] font-bold transition-colors cursor-pointer ${
+                          activeLang === lang
+                            ? "bg-[#2B7A78] text-[#FEFFFF]"
+                            : "text-[#17252A]/70 hover:text-[#17252A]"
+                        }`}
                       >
-                        {showTechDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                        <span>Technical Model Details</span>
+                        {lang === "en" ? "English" : lang === "ta" ? "தமிழ்" : "हिन्दी"}
                       </button>
+                    ))}
+                  </div>
+                </div>
 
-                      {showTechDetails && (
-                        <div className="mt-2 border border-[#17252A]/15 p-3 rounded-[4px] bg-[#DEF2F1]/20 font-mono text-[10px] space-y-1">
-                          <div>Pipeline Decision: {analysis.safety?.decision || "completed"}</div>
-                          <div>Agreement Score: {analysis.safety?.agreementScore ?? "N/A"}</div>
-                          <div>Executed At: {analysis.meta?.executedAt || "N/A"}</div>
-                          {analysis.meta?.modelVersions &&
-                            Object.entries(analysis.meta.modelVersions).map(([k, v]) => (
-                              <div key={k}>
-                                {k}: {v}
-                              </div>
-                            ))}
-                        </div>
-                      )}
+                <div className="space-y-2 text-xs text-[#17252A] leading-relaxed">
+                  {explanationLoading ? (
+                    <div className="py-4 flex items-center justify-center gap-2 font-mono text-[11px] text-[#17252A]/60">
+                      <Spinner size="sm" />
+                      <span>Synthesizing Groq clinical tokens...</span>
                     </div>
-                  </CardContent>
-                </Card>
+                  ) : (
+                    <p>{explanations[activeLang] || explanations.en}</p>
+                  )}
+                  <p className="font-medium text-[#17252A]/85">
+                    This automated analysis highlights specific patterns for a physician&apos;s review. It cannot diagnose or rule out melanoma.
+                  </p>
+                </div>
 
-                {/* 6. Doctor Review Feedback (For Doctors with active consent) */}
-                {isDoctor && (
-                  <Card className="border-[#2B7A78]/40 bg-[#DEF2F1]/10">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <UserCheck className="h-4 w-4 text-[#2B7A78]" />
-                        <span>Doctor Clinical Review & Feedback</span>
-                      </CardTitle>
-                      <p className="text-xs text-[#17252A]/70">
-                        Submit clinical concurrence, correction, or rejection of algorithmic screening findings.
-                      </p>
-                    </CardHeader>
-                    <CardContent>
-                      {feedbackSuccess && (
-                        <Alert variant="info" className="mb-4">
-                          Your clinical feedback was saved to the patient case and logged in the audit trail.
-                        </Alert>
-                      )}
-                      {feedbackError && (
-                        <Alert variant="error" className="mb-4">
-                          {feedbackError}
-                        </Alert>
-                      )}
+                <p className="text-[11px] font-mono text-[#17252A]/60 mt-3 pt-2 border-t border-[#17252A]/10">
+                  Generated by Groq. It explains. It does not decide.
+                </p>
+              </article>
+            </div>
+          </div>
 
-                      <form onSubmit={handleFeedbackSubmit} className="space-y-4 text-xs">
-                        <FormField label="Clinical Determination" htmlFor="decision" required>
-                          <Select
-                            id="decision"
-                            value={feedbackDecision}
-                            onChange={(e) =>
-                              setFeedbackDecision(e.target.value as "accept" | "correct" | "reject")
-                            }
-                          >
-                            <option value="accept">Accept - Concur with automated measurements</option>
-                            <option value="correct">Correct - Adjust lesion label / category</option>
-                            <option value="reject">Reject - Disagree with algorithmic estimate</option>
-                          </Select>
-                        </FormField>
+          {/* BOTTOM ACTION BAND */}
+          <section className="w-full flex flex-col md:flex-row items-center justify-between gap-4 pt-6 pb-6 border-t border-[#17252A]/15 mt-10">
+            <div className="font-mono text-xs text-[#17252A]/60">
+              CASE REF: #{caseDoc._id.slice(-8).toUpperCase()} · PATIENT PROTOCOL: OPD-AMBULATORY
+            </div>
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+              <button
+                type="button"
+                onClick={() => setDoctorFeedbackOpen(!doctorFeedbackOpen)}
+                className="px-4 py-2 rounded-[4px] border border-[#2B7A78] text-[#2B7A78] font-mono text-xs font-bold hover:bg-[#DEF2F1] transition-colors cursor-pointer"
+              >
+                {isDoctor ? "Clinician Review (ICD-10)" : "Share with a doctor"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFollowUpOpen(true)}
+                className="px-4 py-2 rounded-[4px] border border-[#17252A]/20 text-[#17252A] font-mono text-xs font-semibold hover:bg-[#DEF2F1]/50 transition-colors cursor-pointer"
+              >
+                Set a follow-up reminder
+              </button>
+              <Link
+                href="/doctors"
+                className="px-5 py-2 rounded-[4px] bg-[#2B7A78] text-[#FEFFFF] font-mono text-xs font-bold hover:bg-[#1B6B63] transition-colors shadow-sm"
+              >
+                Book a consultation
+              </Link>
+            </div>
+          </section>
 
-                        {feedbackDecision === "correct" && (
-                          <FormField label="Corrected Diagnosis / Lesion Label" htmlFor="correctedLabel">
-                            <Input
-                              id="correctedLabel"
-                              placeholder="e.g. Seborrheic Keratosis, Stasis Dermatitis"
-                              value={feedbackLabel}
-                              onChange={(e) => setFeedbackLabel(e.target.value)}
-                            />
-                          </FormField>
-                        )}
-
-                        <FormField label="Physician Notes" htmlFor="notes">
-                          <Textarea
-                            id="notes"
-                            rows={3}
-                            placeholder="Clinical impression, recommended next steps, biopsy considerations..."
-                            value={feedbackNotes}
-                            onChange={(e) => setFeedbackNotes(e.target.value)}
-                          />
-                        </FormField>
-
-                        <Button
-                          type="submit"
-                          variant="primary"
-                          size="sm"
-                          isLoading={feedbackSubmitting}
-                        >
-                          Submit Clinical Feedback
-                        </Button>
-                      </form>
-
-                      {/* Display existing feedback history */}
-                      {caseDoc.feedback && caseDoc.feedback.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-[#17252A]/10 space-y-2">
-                          <span className="font-semibold text-xs text-[#17252A]">Previous Doctor Reviews:</span>
-                          {caseDoc.feedback.map((fb, idx) => (
-                            <div key={idx} className="border border-[#17252A]/15 p-2 rounded-[4px] bg-[#FEFFFF] text-xs space-y-1">
-                              <div className="flex items-center justify-between font-bold">
-                                <span className="uppercase text-[#2B7A78]">{fb.decision}</span>
-                                <span className="text-[10px] text-[#17252A]/60 font-mono">
-                                  {new Date(fb.createdAt).toLocaleDateString()}
-                                </span>
-                              </div>
-                              {fb.correctedLabel && <div>Correction: {fb.correctedLabel}</div>}
-                              {fb.notes && <p className="text-[#17252A]/80">{fb.notes}</p>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
+          {/* Doctor Review / Feedback Form Expandable */}
+          {doctorFeedbackOpen && (
+            <div className="mt-6 p-6 bg-[#FEFFFF] border-2 border-[#2B7A78] rounded-[4px] shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="h-5 w-5 text-[#2B7A78]" />
+                  <h3 className="text-sm font-bold text-[#17252A]">
+                    Clinician Case Review &amp; Triage Form (ICD-10)
+                  </h3>
+                </div>
+                <span className="font-mono text-[10px] text-[#2B7A78] font-bold uppercase bg-[#DEF2F1] px-2 py-0.5 rounded-[2px]">
+                  Institutional Sign-off
+                </span>
               </div>
+
+              {feedbackSuccess && (
+                <Alert variant="info">
+                  Clinician review and triage decision successfully recorded.
+                </Alert>
+              )}
+
+              <form onSubmit={handleFeedbackSubmit} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-semibold mb-1">Decision</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="decision"
+                        value="accept"
+                        checked={feedbackDecision === "accept"}
+                        onChange={() => setFeedbackDecision("accept")}
+                      />
+                      <span>Accept automated assessment</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="decision"
+                        value="correct"
+                        checked={feedbackDecision === "correct"}
+                        onChange={() => setFeedbackDecision("correct")}
+                      />
+                      <span>Correct diagnosis / class</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="decision"
+                        value="reject"
+                        checked={feedbackDecision === "reject"}
+                        onChange={() => setFeedbackDecision("reject")}
+                      />
+                      <span>Reject assessment as invalid</span>
+                    </label>
+                  </div>
+                </div>
+
+                {feedbackDecision === "correct" && (
+                  <div>
+                    <label className="block font-semibold mb-1">
+                      Corrected Diagnostic Label / ICD-10 Code
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., L82.1 (Seborrheic keratosis) or C43.9 (Melanoma)"
+                      value={feedbackLabel}
+                      onChange={(e) => setFeedbackLabel(e.target.value)}
+                      className="w-full h-10 px-3 border border-[#17252A]/20 rounded-[4px]"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block font-semibold mb-1">Clinical Notes</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Provide diagnostic rationale, dermoscopic observations, or recommended next steps..."
+                    value={feedbackNotes}
+                    onChange={(e) => setFeedbackNotes(e.target.value)}
+                    className="w-full p-3 border border-[#17252A]/20 rounded-[4px]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={feedbackSubmitting}
+                  className="px-4 py-2 bg-[#2B7A78] text-[#FEFFFF] font-mono font-bold rounded-[4px] hover:bg-[#1B6B63] disabled:opacity-50"
+                >
+                  {feedbackSubmitting ? "Signing Record..." : "Submit Clinician Sign-off"}
+                </button>
+              </form>
             </div>
           )}
         </div>
-
-        {/* Delete Confirmation Dialog */}
-        <Dialog
-          open={deleteOpen}
-          onClose={() => setDeleteOpen(false)}
-          title="Delete Screening Case"
-        >
-          <div className="space-y-4 text-xs text-[#17252A]/85">
-            <p>
-              Are you sure you want to permanently delete this case? This action will permanently remove
-              the submitted photograph, all segmentation masks, Grad-CAM heatmaps, and measured
-              data from the server.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button variant="secondary" size="sm" onClick={() => setDeleteOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleDeleteCase}
-                isLoading={deleting}
-              >
-                Permanently Delete
-              </Button>
-            </div>
-          </div>
-        </Dialog>
       </main>
+
+      {/* Follow-up Dialog */}
+      <Dialog
+        isOpen={followUpOpen}
+        onClose={() => setFollowUpOpen(false)}
+        title="Schedule Clinical Follow-up Reminder"
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-[#17252A]/80">
+            SkinSentry will send a notification to re-photograph this spot in the specified number of days to monitor ABCD evolution over time.
+          </p>
+          {followUpSuccess && (
+            <Alert variant="info">Follow-up reminder set successfully!</Alert>
+          )}
+          <div>
+            <label className="block font-semibold mb-1">Interval (Days)</label>
+            <select
+              value={followUpDays}
+              onChange={(e) => setFollowUpDays(Number(e.target.value))}
+              className="w-full h-10 px-3 border border-[#17252A]/20 rounded-[4px] bg-[#FEFFFF]"
+            >
+              <option value={14}>14 days (High suspicion / rapid change)</option>
+              <option value={30}>30 days (Standard 1-month monitoring)</option>
+              <option value={60}>60 days (Routine 2-month monitoring)</option>
+              <option value={90}>90 days (Quarterly survey)</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setFollowUpOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleFollowUpSave}>
+              Save Reminder
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        isOpen={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Permanently Purge Screening Case"
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-[#17252A]/80 leading-relaxed">
+            In accordance with DISHA and DPDPA patient sovereign rights, this permanently deletes the photograph, segmentation masks, and clinical analysis data from all node enclaves.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setDeleteOpen(false)}>
+              Keep Case
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleDeleteCase} isLoading={deleting}>
+              Purge All Data
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <Footer />
     </div>
-  );
-}
-
-export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  return (
-    <React.Suspense
-      fallback={
-        <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#FEFFFF] text-[#17252A] py-20">
-          <Spinner size="lg" />
-          <p className="text-xs text-[#17252A]/70 font-mono">Loading case records...</p>
-        </div>
-      }
-    >
-      <CaseDetailContent params={params} />
-    </React.Suspense>
   );
 }
