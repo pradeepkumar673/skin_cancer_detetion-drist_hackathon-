@@ -12,11 +12,16 @@ import hashlib
 import json
 import os
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from download_cancer_model import download_with_progress, load_hf_token
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = REPO_ROOT / "models"
+HF_RESOLVE = "https://huggingface.co/{repo}/resolve/main/{filename}"
 
 MODELS = [
     {
@@ -25,7 +30,7 @@ MODELS = [
         "local_dir": MODELS_DIR / "cancer" / "vit_skin_cancer",
         "role": "Cancer junior classifier, 7 HAM10000 classes",
         "licence": "MIT (check model card)",
-        "allow_patterns": ["efficientnetv2s.h5", "README.md", "config.json"],
+        "files": ["efficientnetv2s.h5", "README.md"],
     },
     {
         "id": "disease_classifier",
@@ -33,13 +38,7 @@ MODELS = [
         "local_dir": MODELS_DIR / "disease" / "dermnet_vit",
         "role": "Skin-disease classifier fine-tuned on DermNet images",
         "licence": "Apache-2.0 (check model card)",
-        "allow_patterns": [
-            "model.safetensors",
-            "pytorch_model.bin",
-            "config.json",
-            "preprocessor_config.json",
-            "README.md",
-        ],
+        "files": ["model.safetensors", "config.json", "preprocessor_config.json", "README.md"],
     },
     {
         "id": "ulcer_segmentation",
@@ -47,7 +46,7 @@ MODELS = [
         "local_dir": MODELS_DIR / "ulcer" / "diafoot",
         "role": "Foot-ulcer segmentation trained on FUSeg",
         "licence": "Check model card before use",
-        "allow_patterns": ["best_model.pt", "README.md"],
+        "files": ["best_model.pt", "README.md"],
     },
     {
         "id": "backbone",
@@ -55,12 +54,7 @@ MODELS = [
         "local_dir": MODELS_DIR / "backbone" / "dinov2-small",
         "role": "DINOv2-small image backbone for embeddings",
         "licence": "Apache-2.0",
-        "allow_patterns": [
-            "model.safetensors",
-            "config.json",
-            "preprocessor_config.json",
-            "README.md",
-        ],
+        "files": ["model.safetensors", "config.json", "preprocessor_config.json", "README.md"],
     },
     {
         "id": "medsam",
@@ -68,25 +62,9 @@ MODELS = [
         "local_dir": MODELS_DIR / "cancer" / "medsam",
         "role": "MedSAM lesion and medical image segmentation",
         "licence": "Apache-2.0",
-        "allow_patterns": [
-            "model.safetensors",
-            "pytorch_model.bin",
-            "config.json",
-            "preprocessor_config.json",
-            "README.md",
-        ],
+        "files": ["model.safetensors", "config.json", "preprocessor_config.json", "README.md"],
     },
 ]
-
-
-def load_hf_token() -> str:
-    env_path = REPO_ROOT / "ai-service" / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("HF_TOKEN="):
-                return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return os.environ.get("HF_TOKEN", "").strip()
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -118,12 +96,14 @@ def write_source(entry: dict) -> None:
 
 
 def list_weight_files(local_dir: Path) -> list[Path]:
-    skip = {".gitattributes", "SOURCE.txt"}
+    skip_names = {".gitattributes", "SOURCE.txt"}
     files = []
     for path in sorted(local_dir.rglob("*")):
         if not path.is_file():
             continue
-        if path.name in skip or path.name.startswith("."):
+        if ".cache" in path.parts or path.name.startswith("."):
+            continue
+        if path.name in skip_names:
             continue
         files.append(path)
     return files
@@ -132,7 +112,10 @@ def list_weight_files(local_dir: Path) -> list[Path]:
 def write_manifest(entries: list[dict]) -> None:
     artifacts = []
     for entry in entries:
-        for path in list_weight_files(entry["local_dir"]):
+        local_dir = entry["local_dir"]
+        if not local_dir.exists():
+            continue
+        for path in list_weight_files(local_dir):
             artifacts.append(
                 {
                     "id": entry["id"],
@@ -152,28 +135,46 @@ def write_manifest(entries: list[dict]) -> None:
     print(f"Wrote {dest.relative_to(REPO_ROOT)} ({len(artifacts)} files)")
 
 
-def download_one(entry: dict, token: str) -> None:
-    from huggingface_hub import snapshot_download
+def download_named_file(repo_id: str, filename: str, dest: Path, token: str) -> None:
+    url = HF_RESOLVE.format(repo=repo_id, filename=filename)
+    last_error = None
+    for attempt in range(1, 9):
+        try:
+            download_with_progress(url, dest, token)
+            if dest.exists() and dest.stat().st_size > 0:
+                return
+            raise RuntimeError(f"{filename} is empty after download")
+        except Exception as err:
+            last_error = err
+            wait = min(2 ** attempt, 30)
+            print(f"    retry {attempt}/8 for {filename} in {wait}s ({err})")
+            time.sleep(wait)
+    raise RuntimeError(f"Failed to download {repo_id}/{filename}: {last_error}")
 
+
+def download_one(entry: dict, token: str) -> None:
     local_dir = entry["local_dir"]
     local_dir.mkdir(parents=True, exist_ok=True)
     print(f"==> {entry['id']}: {entry['repo_id']}")
     print(f"    -> {local_dir.relative_to(REPO_ROOT).as_posix()}")
-    snapshot_download(
-        repo_id=entry["repo_id"],
-        local_dir=str(local_dir),
-        token=token or None,
-        resume_download=True,
-        allow_patterns=entry["allow_patterns"],
-        ignore_patterns=["*.msgpack", "*.ot", "*.onnx", "*.md5"],
-    )
-    write_source(entry)
-    files = list_weight_files(local_dir)
-    if not files:
+    downloaded = 0
+    for filename in entry["files"]:
+        dest = local_dir / filename
+        print(f"    downloading {filename}")
+        try:
+            download_named_file(entry["repo_id"], filename, dest, token)
+            downloaded += 1
+            print(f"    saved {filename} ({dest.stat().st_size / 1024**2:.1f} MB)")
+        except Exception as err:
+            if filename in {"preprocessor_config.json", "README.md", "pytorch_model.bin"}:
+                print(f"    skip optional {filename}: {err}")
+                if dest.exists() and dest.stat().st_size == 0:
+                    dest.unlink()
+                continue
+            raise
+    if downloaded == 0:
         raise RuntimeError(f"No files downloaded for {entry['repo_id']}")
-    for path in files:
-        size_mb = path.stat().st_size / (1024**2)
-        print(f"    {path.name}: {size_mb:.1f} MB")
+    write_source(entry)
 
 
 def main() -> int:
@@ -183,12 +184,11 @@ def main() -> int:
         return 1
 
     try:
-        import huggingface_hub  # noqa: F401
+        import requests  # noqa: F401
     except ImportError:
-        print("ERROR: huggingface_hub is not installed. Run: pip install huggingface_hub", file=sys.stderr)
+        print("ERROR: requests is not installed. Run: pip install requests", file=sys.stderr)
         return 1
 
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     failed = []

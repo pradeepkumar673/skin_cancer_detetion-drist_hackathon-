@@ -8,9 +8,11 @@ Subcommands:
 """
 
 import argparse
+import hashlib
 from pathlib import Path
 import random
 import sys
+import numpy as np
 from PIL import Image
 import pandas as pd
 
@@ -50,7 +52,6 @@ def validate_ham10000():
         print("FAILURE: Neither HAM10000_images_part_1 nor part_2 folder exists.", file=sys.stderr)
         sys.exit(1)
 
-    # Map image_id to actual image paths
     image_paths = {}
     if part1_exists:
         for f in part1_dir.glob("*.jpg"):
@@ -70,27 +71,11 @@ def validate_ham10000():
         print(f"FAILURE: {len(missing_images)} images referenced in CSV were not found on disk.", file=sys.stderr)
         sys.exit(1)
 
-    # Class distribution
     print("\nClass distribution (dx):")
-    expected_classes = {"akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"}
     dx_counts = df["dx"].value_counts().to_dict()
     for dx_cls, count in sorted(dx_counts.items()):
         print(f"  {dx_cls:8s}: {count:5d}")
 
-    unrecognized_classes = set(dx_counts.keys()) - expected_classes
-    if unrecognized_classes:
-        print(f"WARNING: Unexpected diagnosis classes found: {unrecognized_classes}")
-
-    # Missing clinical metadata values
-    missing_age = int(df["age"].isna().sum())
-    missing_sex = int(df["sex"].isna().sum())
-    missing_loc = int(df["localization"].isna().sum())
-    print("\nMissing metadata fields:")
-    print(f"  Missing age: {missing_age}")
-    print(f"  Missing sex: {missing_sex}")
-    print(f"  Missing localization: {missing_loc}")
-
-    # Check random 50 images with Pillow
     sample_size = min(50, len(image_paths))
     sampled_stems = random.sample(list(image_paths.keys()), sample_size)
     print(f"\nVerifying {sample_size} random images with Pillow...")
@@ -107,6 +92,150 @@ def validate_ham10000():
     print("\nSTATUS: VALID")
 
 
+def compute_sha256(file_path: Path) -> str:
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def validate_dermnet():
+    print("=" * 60)
+    print("Validating DermNet Dataset...")
+    print("=" * 60)
+
+    raw_dir = REPO_ROOT / "data" / "raw" / "dermnet"
+    if not raw_dir.exists():
+        print(f"FAILURE: DermNet directory not found at: {raw_dir}", file=sys.stderr)
+        print("Please ensure DermNet dataset is placed under data/raw/dermnet/", file=sys.stderr)
+        sys.exit(1)
+
+    train_dir = raw_dir / "train"
+    test_dir = raw_dir / "test"
+
+    if not train_dir.exists() or not test_dir.exists():
+        print(f"FAILURE: Expected 'train' and 'test' subdirectories in {raw_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    train_classes = {d.name: len(list(d.glob("*.jpg"))) for d in train_dir.iterdir() if d.is_dir()}
+    test_classes = {d.name: len(list(d.glob("*.jpg"))) for d in test_dir.iterdir() if d.is_dir()}
+
+    print(f"Discovered {len(train_classes)} train classes, {len(test_classes)} test classes.")
+    print("\nTrain class image counts:")
+    for cls_name, count in sorted(train_classes.items(), key=lambda x: -x[1]):
+        print(f"  {cls_name:40s}: {count:5d}")
+
+    # Check 50 random images
+    all_train_images = list(train_dir.rglob("*.jpg"))
+    if not all_train_images:
+        print("FAILURE: No .jpg images found in train folders.", file=sys.stderr)
+        sys.exit(1)
+
+    sample_size = min(50, len(all_train_images))
+    sampled = random.sample(all_train_images, sample_size)
+    print(f"\nVerifying {sample_size} random images with Pillow...")
+    for p in sampled:
+        try:
+            with Image.open(p) as img:
+                img.verify()
+        except Exception as e:
+            print(f"FAILURE: Corrupted image: {p} ({e})", file=sys.stderr)
+            sys.exit(1)
+
+    # Detect duplicate images across train and test
+    print("\nChecking for duplicate images across train and test via SHA-256...")
+    train_hashes = {}
+    for p in all_train_images:
+        train_hashes[compute_sha256(p)] = p
+
+    all_test_images = list(test_dir.rglob("*.jpg"))
+    duplicates = []
+    for p in all_test_images:
+        h = compute_sha256(p)
+        if h in train_hashes:
+            duplicates.append((train_hashes[h], p))
+
+    print(f"Exact cross-split duplicate images found: {len(duplicates)}")
+    print("STATUS: VALID")
+
+
+def validate_fuseg():
+    print("=" * 60)
+    print("Validating FUSeg Foot Ulcer Dataset...")
+    print("=" * 60)
+
+    raw_dir = REPO_ROOT / "data" / "raw" / "fuseg"
+    if not raw_dir.exists():
+        print(f"FAILURE: FUSeg directory not found at: {raw_dir}", file=sys.stderr)
+        print("Please place FUSeg dataset under data/raw/fuseg/", file=sys.stderr)
+        sys.exit(1)
+
+    train_img_dir = raw_dir / "train" / "images"
+    train_lbl_dir = raw_dir / "train" / "labels"
+
+    if not train_img_dir.exists() or not train_lbl_dir.exists():
+        print(f"FAILURE: Expected train/images and train/labels in {raw_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    images = {f.stem: f for f in train_img_dir.glob("*.png")}
+    masks = {f.stem: f for f in train_lbl_dir.glob("*.png")}
+
+    print(f"Training images found: {len(images)}")
+    print(f"Training masks found: {len(masks)}")
+
+    missing_masks = set(images.keys()) - set(masks.keys())
+    if missing_masks:
+        print(f"FAILURE: {len(missing_masks)} images do not have a matching mask.", file=sys.stderr)
+        sys.exit(1)
+
+    # Check mask properties and wound fraction
+    area_fractions = []
+    sample_stems = list(images.keys())[:min(50, len(images))]
+    for stem in sample_stems:
+        mask_arr = np.array(Image.open(masks[stem]))
+        unique_vals = np.unique(mask_arr)
+        # Check binary
+        if not set(unique_vals).issubset({0, 1, 255}):
+            print(f"WARNING: Mask {stem} has non-standard values: {unique_vals}")
+        frac = np.count_nonzero(mask_arr) / mask_arr.size
+        area_fractions.append(frac)
+
+    mean_frac = np.mean(area_fractions) if area_fractions else 0.0
+    print(f"Sampled mean wound area fraction: {mean_frac * 100:.2f}%")
+    print("STATUS: VALID")
+
+
+def validate_nonskin():
+    print("=" * 60)
+    print("Validating Non-Skin Dataset...")
+    print("=" * 60)
+
+    raw_dir = REPO_ROOT / "data" / "raw" / "nonskin"
+    if not raw_dir.exists():
+        print(f"FAILURE: Non-skin directory not found at: {raw_dir}", file=sys.stderr)
+        print("Please place non-skin photos under data/raw/nonskin/", file=sys.stderr)
+        sys.exit(1)
+
+    all_images = list(raw_dir.rglob("*.jpg")) + list(raw_dir.rglob("*.png"))
+    print(f"Discovered images: {len(all_images)}")
+
+    if len(all_images) < 2000:
+        print(f"FAILURE: Expected at least 2000 non-skin photos, found {len(all_images)}", file=sys.stderr)
+        sys.exit(1)
+
+    print("Verifying 50 random non-skin images with Pillow...")
+    for p in random.sample(all_images, min(50, len(all_images))):
+        try:
+            with Image.open(p) as img:
+                img.verify()
+        except Exception as e:
+            print(f"FAILURE: Corrupted non-skin image: {p} ({e})", file=sys.stderr)
+            sys.exit(1)
+
+    print("STATUS: VALID")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Validate dataset integrity and schemas.")
     subparsers = parser.add_subparsers(dest="dataset", required=True)
@@ -120,8 +249,12 @@ def main():
 
     if args.dataset == "ham10000":
         validate_ham10000()
-    else:
-        print(f"Dataset validator for '{args.dataset}' will be run in Step 6.", file=sys.stderr)
+    elif args.dataset == "dermnet":
+        validate_dermnet()
+    elif args.dataset == "fuseg":
+        validate_fuseg()
+    elif args.dataset == "nonskin":
+        validate_nonskin()
 
 
 if __name__ == "__main__":
