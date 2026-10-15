@@ -165,7 +165,7 @@ async def run_pipeline_async(
             prior_patches = None
 
     other_embs = None
-    if other_lesion_images:
+    if other_lesion_images is not None and len(other_lesion_images) > 0:
         try:
             other_embs = backbone.embed(other_lesion_images)
         except Exception:

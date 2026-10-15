@@ -92,6 +92,7 @@ class CancerJuniorA(BaseModel):
     abcde: ABCDE
     mask_png_b64: str = Field("", description="Base64 encoded lesion segmentation mask")
     patch_scores: PatchScores
+    detected_boxes: List[Dict[str, Any]] = Field(default_factory=list, description="Normalized bounding boxes of detected lesions/injuries")
 
 
 class UglyDuckling(BaseModel):

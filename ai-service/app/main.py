@@ -327,6 +327,8 @@ async def analyze_image_endpoint(
         )
         return response
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error("pipeline_execution_error", request_id=request_id, error=str(e))
         raise HTTPException(
             status_code=500,
@@ -359,6 +361,9 @@ async def explain_endpoint(
         result=request.result,
         language=request.language,
     )
+    return explanation
+
+
 @app.get(
     "/v1/metrics",
     tags=["Metrics"],

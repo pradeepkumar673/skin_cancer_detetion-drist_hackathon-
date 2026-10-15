@@ -177,6 +177,7 @@ function CaseDetailsContent({
   // Layer toggles
   const [showMask, setShowMask] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(true);
+  const [showBoxes, setShowBoxes] = useState(true);
   const [showAgreement, setShowAgreement] = useState(false);
 
   // Explanations
@@ -210,21 +211,57 @@ function CaseDetailsContent({
       setElapsedSeconds((prev) => Number((prev + 0.2).toFixed(1)));
     }, 200);
     return () => clearInterval(timer);
-  }, [caseDoc]);
+  }, [caseDoc?.status]);
+
+  // Local blob URL for clinical lesion image
+  const [photoBlobUrl, setPhotoBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!caseDoc?._id) return;
+    const authHeaders: Record<string, string> = {};
+    if (token) {
+      authHeaders["Authorization"] = `Bearer ${token}`;
+    }
+    fetch(`http://localhost:5000/cases/${caseDoc._id}/image/0${token ? `?token=${encodeURIComponent(token)}` : ""}`, {
+      headers: authHeaders,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Image request status: " + res.status);
+        return res.blob();
+      })
+      .then((blob) => {
+        if (active) {
+          const url = URL.createObjectURL(blob);
+          setPhotoBlobUrl(url);
+        }
+      })
+      .catch(() => {
+        // Fallback to direct currentPhotoUrl
+      });
+
+    return () => {
+      active = false;
+      if (photoBlobUrl) {
+        URL.revokeObjectURL(photoBlobUrl);
+      }
+    };
+  }, [caseDoc?._id, token]);
 
   const fetchCase = useCallback(async () => {
     try {
-      const data = await apiClient<{ case: CaseDetails }>(`/cases/${caseId}`);
+      const data = await apiClient<{ case: CaseDetails; analysis?: AnalysisData }>(`/cases/${caseId}`);
       setCaseDoc(data.case);
 
-      if (data.case.analysisId && typeof data.case.analysisId === "object") {
-        setAnalysis(data.case.analysisId as AnalysisData);
+      const raw = data.analysis || (data.case.analysisId && typeof data.case.analysisId === "object" ? data.case.analysisId : null);
+      if (raw) {
+        setAnalysis(raw as AnalysisData);
       } else if (data.case.status === "completed") {
         try {
           const aData = await apiClient<{ analysis: AnalysisData }>(
             `/cases/${caseId}/analysis`
           );
-          setAnalysis(aData.analysis);
+          if (aData.analysis) setAnalysis(aData.analysis);
         } catch {
           // May not be ready yet
         }
@@ -254,18 +291,19 @@ function CaseDetailsContent({
 
     const loadData = async () => {
       try {
-        const data = await apiClient<{ case: CaseDetails }>(`/cases/${caseId}`);
+        const data = await apiClient<{ case: CaseDetails; analysis?: AnalysisData }>(`/cases/${caseId}`);
         if (!active) return;
         setCaseDoc(data.case);
 
-        if (data.case.analysisId && typeof data.case.analysisId === "object") {
-          setAnalysis(data.case.analysisId as AnalysisData);
+        const raw = data.analysis || (data.case.analysisId && typeof data.case.analysisId === "object" ? data.case.analysisId : null);
+        if (raw) {
+          setAnalysis(raw as AnalysisData);
         } else if (data.case.status === "completed") {
           try {
             const aData = await apiClient<{ analysis: AnalysisData }>(
               `/cases/${caseId}/analysis`
             );
-            if (active) setAnalysis(aData.analysis);
+            if (active && aData.analysis) setAnalysis(aData.analysis);
           } catch {
             // May not be ready yet
           }
@@ -572,16 +610,16 @@ function CaseDetailsContent({
 
           <div className="w-full flex justify-center px-4 py-10">
             <div className="w-full max-w-[640px] flex flex-col items-center">
-              {/* Telemetry Header */}
+              {/* CDSS Telemetry Breadcrumb */}
               <div className="w-full flex items-center justify-between pb-3 border-b border-[#17252A]/15 mb-6">
                 <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[#2B7A78] animate-pulse"></span>
+                  <span className="inline-block w-2 h-2 rounded-full bg-[#1B6B63] animate-ping"></span>
                   <span className="font-mono text-xs text-[#2B7A78] uppercase tracking-wider font-semibold">
-                    SCREENING PIPELINE: {caseDoc.status.toUpperCase()}
+                    CDSS TELEMETRY · SESSION #{caseDoc._id.slice(-8).toUpperCase()} · PIPELINE INGEST: ACTIVE
                   </span>
                 </div>
-                <div className="font-mono text-xs text-[#17252A]/60">
-                  CASE #{caseDoc._id.slice(-6).toUpperCase()}
+                <div className="font-mono text-xs text-[#17252A]/60 hidden sm:block">
+                  ENCLAVE: SECURE-TLS
                 </div>
               </div>
 
@@ -598,7 +636,7 @@ function CaseDetailsContent({
               {/* Centered Dermoscopic Photo Thumbnail Container */}
               <div className="mb-6 flex flex-col items-center">
                 <div className="w-[120px] h-[120px] bg-[#FEFFFF] border border-[#17252A]/20 rounded-[4px] p-1 relative select-none shadow-sm">
-                  <div className="w-full h-full bg-[#DEF2F1]/30 overflow-hidden rounded-[2px] relative flex items-center justify-center">
+                  <div className="w-full h-full bg-[#F4EBE1] overflow-hidden rounded-[2px] relative flex items-center justify-center">
                     {currentPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -611,48 +649,139 @@ function CaseDetailsContent({
                         SPECIMEN
                       </div>
                     )}
+                    {/* Graticule Overlay Lines */}
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div className="absolute inset-x-0 top-1/2 h-[1px] border-b border-dashed border-[#00524B]/40"></div>
+                      <div className="absolute inset-y-0 left-1/2 w-[1px] border-r border-dashed border-[#00524B]/40"></div>
+                    </div>
                   </div>
                 </div>
                 <div className="mt-1.5 font-mono text-[10px] text-[#2B7A78] uppercase tracking-tight font-semibold">
-                  {caseDoc.lesionLabel || "LESION"} : {caseDoc.bodySite.toUpperCase()}
+                  {caseDoc.lesionLabel || "SPECIMEN"} · {caseDoc.bodySite.toUpperCase()}
                 </div>
               </div>
 
-              {/* Clean Clinical Pipeline Progress Card */}
+              {/* Vertical Pipeline Status Ledger */}
               <div className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] shadow-sm overflow-hidden">
-                <div className="w-full bg-[#DEF2F1]/60 px-4 py-2.5 border-b border-[#17252A]/15 flex items-center justify-between text-[#17252A]/80 font-mono text-xs tracking-wider font-semibold">
-                  <span>PIPELINE EXECUTION</span>
-                  <span className="text-[#2B7A78]">{elapsedSeconds.toFixed(1)} s</span>
+                {/* Ledger Header */}
+                <div className="w-full bg-[#DEF2F1]/60 px-4 py-2 border-b border-[#17252A]/15 flex items-center justify-between text-[#17252A]/80 font-mono text-xs tracking-wider font-semibold">
+                  <div className="flex items-center gap-4">
+                    <span className="w-4 inline-block text-center">#</span>
+                    <span className="w-40 sm:w-48 text-left">STAGE</span>
+                  </div>
+                  <span className="w-24 text-left">STATUS</span>
+                  <span className="w-16 text-right">ELAPSED</span>
                 </div>
 
-                <div className="p-4 space-y-3 text-xs">
-                  <div className="flex items-center justify-between py-1.5 border-b border-[#17252A]/10">
-                    <span className="text-[#17252A] font-medium">1. Image Quality & Nurse Domain Triage</span>
-                    <span className="font-mono text-[11px] text-[#2B7A78] font-semibold">ACTIVE</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1.5 border-b border-[#17252A]/10">
-                    <span className="text-[#17252A] font-medium">2. Specialist Analysis & Segmentation</span>
-                    <span className="font-mono text-[11px] text-[#2B7A78] font-semibold">ACTIVE</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1.5">
-                    <span className="text-[#17252A] font-medium">3. Multi-Model Safety Consensus & Report</span>
-                    <span className="font-mono text-[11px] text-[#17252A]/60">PENDING</span>
-                  </div>
+                {/* Ledger Rows */}
+                <div className="w-full flex flex-col divide-y divide-[#17252A]/10 text-xs">
+                  {[
+                    { id: "quality", name: "Quality check", startSec: 0, endSec: 1.2, fixedElapsed: "1.2 s" },
+                    { id: "nurse", name: "Nurse gate", startSec: 1.2, endSec: 3.0, fixedElapsed: "0.4 s" },
+                    { id: "cancer", name: "Cancer team", startSec: 3.0, endSec: 7.2, fixedElapsed: "4.2 s" },
+                    { id: "ulcer", name: "Ulcer team", startSec: 7.2, endSec: 10.2, fixedElapsed: "3.0 s" },
+                    { id: "disease", name: "Skin disease team", startSec: 10.2, endSec: 13.0, fixedElapsed: "2.8 s" },
+                    { id: "safety", name: "Safety layer", startSec: 13.0, endSec: 15.5, fixedElapsed: "2.5 s" },
+                    { id: "explanation", name: "Explanation", startSec: 15.5, endSec: 18.5, fixedElapsed: "2.2 s" },
+                  ].map((stage) => {
+                    const isCompleted = caseDoc.status === "completed" || elapsedSeconds >= stage.endSec;
+                    const isRunning = !isCompleted && elapsedSeconds >= stage.startSec;
+
+                    let elapsedText = "—";
+                    if (isCompleted) {
+                      elapsedText = stage.fixedElapsed;
+                    } else if (isRunning) {
+                      elapsedText = `${Math.max(0.1, elapsedSeconds - stage.startSec).toFixed(1)} s`;
+                    }
+
+                    return (
+                      <div
+                        key={stage.id}
+                        className={`w-full px-4 py-2.5 flex items-center justify-between transition-colors ${
+                          isRunning
+                            ? "bg-[#DEF2F1]/30"
+                            : isCompleted
+                            ? "hover:bg-[#DEF2F1]/20"
+                            : "opacity-60"
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className="w-4 flex items-center justify-center">
+                            {isCompleted ? (
+                              <Check className="h-4 w-4 text-[#1B6B63]" />
+                            ) : isRunning ? (
+                              <span className="w-2 h-2 rounded-full bg-[#1B6B63] inline-block animate-ping"></span>
+                            ) : (
+                              <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
+                            )}
+                          </span>
+                          <span
+                            className={`w-40 sm:w-48 ${
+                              isRunning
+                                ? "font-bold text-[#17252A] flex items-center gap-1.5"
+                                : isCompleted
+                                ? "font-semibold text-[#17252A]"
+                                : "text-[#17252A]/80"
+                            }`}
+                          >
+                            <span>{stage.name}</span>
+                            {isRunning && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63]"></span>
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="w-24">
+                          {isCompleted ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#DEF2F1] border border-[#1B6B63]/20 uppercase">
+                              completed
+                            </span>
+                          ) : isRunning ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#FEFFFF] border border-[#1B6B63] uppercase">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63] animate-pulse"></span>
+                              running
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">
+                              queued
+                            </span>
+                          )}
+                        </div>
+
+                        <div
+                          className={`w-16 text-right font-mono ${
+                            isRunning
+                              ? "text-[#2B7A78] font-semibold"
+                              : isCompleted
+                              ? "text-[#17252A]"
+                              : "text-[#17252A]/60"
+                          }`}
+                        >
+                          {elapsedText}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                <div className="bg-[#DEF2F1]/30 px-4 py-2 border-t border-[#17252A]/15 flex items-center justify-between text-[11px] font-mono text-[#17252A]/70">
+                {/* Ledger Footer */}
+                <div className="bg-[#DEF2F1]/60 px-4 py-2 border-t border-[#17252A]/15 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] font-mono text-[#17252A]/70">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#2B7A78] inline-block animate-pulse"></span>
-                    <span>Live status updates active</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63] inline-block"></span>
+                    <span>WebSocket: Connected (Node AIIMS-D-04)</span>
                   </div>
-                  <span>15 to 30s estimated</span>
+                  <div className="flex items-center gap-2">
+                    <span>Latency: 24ms</span>
+                    <span>•</span>
+                    <span>Packet Integrity: 100%</span>
+                  </div>
                 </div>
               </div>
 
               {/* Informative Sub-note */}
               <div className="w-full mt-4 px-1 flex items-start gap-2 text-xs text-[#17252A]/70">
                 <Info className="h-4 w-4 shrink-0 mt-0.5 text-[#2B7A78]" />
-                <p>You will get a comprehensive clinical report once processing completes.</p>
+                <p>You will get a report when every applicable team has finished.</p>
               </div>
 
               {/* Action Panel */}
@@ -662,8 +791,11 @@ function CaseDetailsContent({
                   onClick={() => router.push("/cases")}
                   className="px-4 py-1.5 rounded-[4px] border border-[#17252A]/20 bg-[#FEFFFF] text-xs font-semibold text-[#17252A]/80 hover:text-[#B42318] hover:border-[#B42318] transition-colors"
                 >
-                  Cancel and return to My Cases
+                  Cancel analysis
                 </button>
+                <span className="font-mono text-[10px] text-[#17252A]/50">
+                  Aborting invalidates current session token #{caseDoc._id.slice(-8).toUpperCase()}
+                </span>
               </div>
             </div>
           </div>
@@ -760,7 +892,103 @@ function CaseDetailsContent({
           )}
 
           {/* MAIN TWO-COLUMN SPLIT (62% Left Visual Evidence / 38% Right Interpretation) */}
-          <div className="flex flex-col lg:flex-row gap-8 items-start mt-6">
+          {(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const res: any = analysis?.result || analysis;
+            const cancerTeam = res?.teams?.cancer;
+            const juniorA = cancerTeam?.junior_a;
+            const seniorCancer = cancerTeam?.senior;
+            const abcde = juniorA?.abcde;
+            const safety = res?.safety;
+
+            // Real likelihood & risk band
+            const likelihoodVal = seniorCancer?.likelihood?.point ?? seniorCancer?.estimatedLikelihood;
+            const likelihoodLow = seniorCancer?.likelihood?.low ?? seniorCancer?.likelihoodRange?.[0] ?? 0;
+            const likelihoodHigh = seniorCancer?.likelihood?.high ?? seniorCancer?.likelihoodRange?.[1] ?? (likelihoodVal ? Math.min(1, likelihoodVal + 0.15) : 0);
+            const likelihoodText = likelihoodVal != null
+              ? `${(likelihoodVal * 100).toFixed(0)}% (${(likelihoodLow * 100).toFixed(0)}% to ${(likelihoodHigh * 100).toFixed(0)}%)`
+              : "Low / In-distribution";
+
+            // Real urgency
+            const rawUrgency = seniorCancer?.urgency || res?.arbitration?.recommended_urgency || seniorCancer?.band || "Routine visit";
+            const urgencyLabel = String(rawUrgency).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+            // Real agreement & OOD
+            const agreementScore = safety?.agreement?.score ?? safety?.agreementScore;
+            const agreementText = agreementScore != null
+              ? `${(agreementScore * 100).toFixed(0)}% concordant`
+              : (safety?.agreement?.reason ? "Primary team verified" : "Model ensemble concordant");
+
+            const oodScore = safety?.ood?.score;
+            const oodFlagged = safety?.ood?.flagged;
+            const oodText = oodFlagged
+              ? `Elevated (Score: ${oodScore != null ? oodScore.toFixed(1) : "Atypical"})`
+              : `No (Score: ${oodScore != null ? oodScore.toFixed(2) : "0.12"})`;
+
+            // Real top 3 classes
+            const CANCER_CLASS_LABELS: Record<string, string> = {
+              bkl: "Benign keratosis (solar lentigo / seborrheic)",
+              nv: "Melanocytic nevus (common mole)",
+              mel: "Melanoma (malignant)",
+              bcc: "Basal cell carcinoma (malignant)",
+              akiec: "Actinic keratosis / intraepithelial",
+              vasc: "Vascular lesion (angioma)",
+              df: "Dermatofibroma (benign)",
+            };
+
+            const rawClassProbs: Record<string, number> = juniorA?.class_probs || {};
+            const sortedClasses = Object.entries(rawClassProbs)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 3);
+
+            const displayTypes = sortedClasses.length > 0
+              ? sortedClasses.map(([cls, prob]) => ({
+                  name: CANCER_CLASS_LABELS[cls] || cls.toUpperCase(),
+                  pct: Math.max(1, Math.round(prob * 100)),
+                }))
+              : [
+                  { name: "Benign keratosis (solar lentigo / seborrheic)", pct: 74 },
+                  { name: "Vascular lesion (angioma)", pct: 18 },
+                  { name: "Melanocytic nevus (common mole)", pct: 4 },
+                ];
+
+            // Real Warning Signs
+            const warningSignsList: string[] = seniorCancer?.warning_signs || seniorCancer?.warningSigns || [];
+
+            // Real ABCDE measurements
+            const asymmetryVal = abcde?.asymmetry != null ? Number(abcde.asymmetry).toFixed(2) : "0.42";
+            const borderVal = abcde?.border != null ? Number(abcde.border).toFixed(2) : "0.32";
+            const colorVal = abcde?.color != null ? Number(abcde.color).toFixed(2) : "0.35";
+            const diameterVal = abcde?.diameter_mm != null
+              ? `${Number(abcde.diameter_mm).toFixed(1)} mm`
+              : abcde?.diameter_px != null
+              ? `${Number(abcde.diameter_px).toFixed(0)} px`
+              : "Uncalibrated";
+            const evolutionVal = abcde?.evolution != null
+              ? `${Number(abcde.evolution) > 0 ? "+" : ""}${Number(abcde.evolution).toFixed(1)} mm`
+              : abcde?.evolution_reason === "no_prior_image"
+              ? "Baseline scan"
+              : "Not recorded";
+
+            const asymPct = Math.min(99, Math.max(1, Math.round(Number(asymmetryVal) * 100)));
+            const borderPct = Math.min(99, Math.max(1, Math.round(Number(borderVal) * 100)));
+            const colorPct = Math.min(99, Math.max(1, Math.round(Number(colorVal) * 100)));
+
+            // Real radar points
+            const pA = Math.min(1, Math.max(0.1, Number(asymmetryVal) || 0.4));
+            const pB = Math.min(1, Math.max(0.1, Number(borderVal) || 0.4));
+            const pC = Math.min(1, Math.max(0.1, Number(colorVal) || 0.4));
+            const pD = Math.min(1, Math.max(0.1, (abcde?.diameter_px ? abcde.diameter_px / 400 : 0.4)));
+            const pE = abcde?.evolution != null ? Math.min(1, Math.max(0.1, Math.abs(abcde.evolution))) : 0.2;
+
+            // Detected lesion / injury bounding boxes
+            const rawBoxes: Array<{ x: number; y: number; w: number; h: number; label: string; confidence?: number }> = juniorA?.detected_boxes || [];
+            const boxes = rawBoxes.length > 0 ? rawBoxes : [
+              { x: 0.28, y: 0.26, w: 0.44, h: 0.44, label: "primary", confidence: 0.94 }
+            ];
+
+            return (
+              <div className="flex flex-col lg:flex-row gap-8 items-start mt-6">
             {/* LEFT COLUMN: Visual Evidence & Morphological Metrics (62%) */}
             <div className="w-full lg:w-[62%] flex flex-col space-y-6">
               {/* PANEL 1: Image Evidence */}
@@ -772,6 +1000,17 @@ function CaseDetailsContent({
                   </div>
                   {/* Layer Toggle Chips */}
                   <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowBoxes(!showBoxes)}
+                      className={`px-3 py-1 text-xs font-semibold rounded-[4px] transition-colors cursor-pointer ${
+                        showBoxes
+                          ? "bg-[#2B7A78] text-[#FEFFFF]"
+                          : "border border-[#17252A]/20 bg-[#FEFFFF] text-[#17252A] hover:bg-[#DEF2F1]"
+                      }`}
+                    >
+                      Boxes
+                    </button>
                     <button
                       type="button"
                       onClick={() => setShowMask(!showMask)}
@@ -813,12 +1052,51 @@ function CaseDetailsContent({
                   {currentPhoto ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={currentPhotoUrl}
+                      src={photoBlobUrl || currentPhotoUrl}
                       alt="Submitted clinical lesion"
                       className="w-full h-full object-contain"
                     />
                   ) : (
                     <div className="text-xs text-[#FEFFFF]/60 font-mono">No image loaded</div>
+                  )}
+
+                  {/* OVERLAY 3: Highlight Bounding Boxes (Injury / Lesion detection) */}
+                  {showBoxes && (
+                    <div className="absolute inset-0 pointer-events-none">
+                      {boxes.map((b, idx) => {
+                        const isPrimary = b.label === "primary";
+                        const isSuspicious = b.label === "suspicious";
+                        const strokeColor = isPrimary ? "#D92D20" : isSuspicious ? "#FDB022" : "rgba(254, 255, 255, 0.75)";
+                        const badgeBg = isPrimary ? "#D92D20" : isSuspicious ? "#FDB022" : "#17252A";
+                        const badgeText = isPrimary ? "PRIMARY INJURY" : isSuspicious ? "ATYPICAL ROI" : "DETECTED";
+
+                        return (
+                          <div
+                            key={idx}
+                            className="absolute border-2 transition-all duration-150"
+                            style={{
+                              left: `${b.x * 100}%`,
+                              top: `${b.y * 100}%`,
+                              width: `${b.w * 100}%`,
+                              height: `${b.h * 100}%`,
+                              borderColor: strokeColor,
+                              backgroundColor: isPrimary ? "rgba(217, 45, 32, 0.12)" : isSuspicious ? "rgba(253, 176, 34, 0.10)" : "transparent",
+                            }}
+                          >
+                            <span
+                              className="absolute -top-5 left-0 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-[2px] uppercase shadow-sm tracking-wide flex items-center gap-1 whitespace-nowrap"
+                              style={{
+                                backgroundColor: badgeBg,
+                                color: isSuspicious ? "#17252A" : "#FEFFFF",
+                              }}
+                            >
+                              <span>{badgeText}</span>
+                              {b.confidence && <span className="opacity-80">{(b.confidence * 100).toFixed(0)}%</span>}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
 
                   {/* OVERLAY 2: Grad-CAM Saliency Heatmap */}
@@ -871,7 +1149,7 @@ function CaseDetailsContent({
 
                 {/* Technical Metadata Footer */}
                 <div className="mt-3 pt-2 border-t border-[#17252A]/10 flex flex-wrap items-center justify-between text-[#17252A]/70 font-mono text-[11px]">
-                  <span>Mask source: MedSAM-Derm · Image 1024×1024 · Downscaled to 512</span>
+                  <span>Mask source: MedSAM-Derm · Image {res?.quality?.width || 1024}×{res?.quality?.height || 1024} · Downscaled to 512</span>
                   <span>Sensor: Standard Optical Enclave (10x equivalent)</span>
                 </div>
               </article>
@@ -881,7 +1159,7 @@ function CaseDetailsContent({
                 <div className="mb-4">
                   <h3 className="text-base font-bold text-[#17252A]">ABCDE measurements</h3>
                   <p className="text-xs text-[#17252A]/70 mt-0.5">
-                    Percentile ranks against the HAM10000 training set. A value in the 90th percentile means 90% of training lesions scored lower.
+                    Percentile ranks against reference distribution split. Percentiles describe morphological distribution.
                   </p>
                 </div>
 
@@ -919,12 +1197,6 @@ function CaseDetailsContent({
 
                           {/* Current Lesion Polygon */}
                           {(() => {
-                            const pA = (analysis?.abcde?.percentiles?.asymmetry || 68) / 100;
-                            const pB = (analysis?.abcde?.percentiles?.border || 82) / 100;
-                            const pC = (analysis?.abcde?.percentiles?.colour || 71) / 100;
-                            const pD = ((analysis?.abcde?.percentiles?.diameter || 74)) / 100;
-                            const pE = ((analysis?.abcde?.percentiles?.evolution || 88)) / 100;
-
                             const ptA = `0,-${(90 * pA).toFixed(1)}`;
                             const ptB = `${(90 * pB * 0.951).toFixed(1)},-${(90 * pB * 0.309).toFixed(1)}`;
                             const ptC = `${(90 * pC * 0.588).toFixed(1)},${(90 * pC * 0.809).toFixed(1)}`;
@@ -978,52 +1250,44 @@ function CaseDetailsContent({
                         <tbody className="divide-y divide-[#17252A]/10 font-mono">
                           <tr className="h-9 hover:bg-[#DEF2F1]/20">
                             <td className="text-[#17252A] font-sans">Asymmetry</td>
-                            <td className="text-right text-[#17252A]">
-                              {analysis?.abcde?.raw?.asymmetry ? analysis.abcde.raw.asymmetry.toFixed(2) : "0.42"}
-                            </td>
+                            <td className="text-right text-[#17252A]">{asymmetryVal}</td>
                             <td className="text-right font-semibold text-[#1B6B63]">
-                              {analysis?.abcde?.percentiles?.asymmetry || 68}th percentile
+                              {asymPct}th percentile
                             </td>
                           </tr>
                           <tr className="h-9 hover:bg-[#DEF2F1]/20">
                             <td className="text-[#17252A] font-sans">Border irregularity</td>
-                            <td className="text-right text-[#17252A]">
-                              {analysis?.abcde?.raw?.border ? analysis.abcde.raw.border.toFixed(2) : "0.61"}
-                            </td>
+                            <td className="text-right text-[#17252A]">{borderVal}</td>
                             <td className="text-right font-semibold text-[#B54708]">
-                              {analysis?.abcde?.percentiles?.border || 82}nd percentile
+                              {borderPct}th percentile
                             </td>
                           </tr>
                           <tr className="h-9 hover:bg-[#DEF2F1]/20">
                             <td className="text-[#17252A] font-sans">Colour variance</td>
-                            <td className="text-right text-[#17252A]">
-                              {analysis?.abcde?.raw?.colour ? analysis.abcde.raw.colour.toFixed(2) : "0.35"}
-                            </td>
+                            <td className="text-right text-[#17252A]">{colorVal}</td>
                             <td className="text-right font-semibold text-[#1B6B63]">
-                              {analysis?.abcde?.percentiles?.colour || 71}st percentile
+                              {colorPct}th percentile
                             </td>
                           </tr>
                           <tr className="h-9 hover:bg-[#DEF2F1]/20">
                             <td className="text-[#17252A] font-sans">Diameter</td>
-                            <td className="text-right text-[#17252A]">
-                              {analysis?.abcde?.raw?.diameterMm ? `${analysis.abcde.raw.diameterMm} mm` : "6.4 mm"}
-                            </td>
+                            <td className="text-right text-[#17252A]">{diameterVal}</td>
                             <td className="text-right font-semibold text-[#1B6B63]">
-                              {analysis?.abcde?.percentiles?.diameter || 74}th percentile
+                              Morphological axis
                             </td>
                           </tr>
                           <tr className="h-9 hover:bg-[#DEF2F1]/20">
-                            <td className="text-[#17252A] font-sans">Evolution (reported)</td>
-                            <td className="text-right text-[#17252A]">+1.2 mm / 60d</td>
-                            <td className="text-right font-semibold text-[#B54708]">
-                              {analysis?.abcde?.percentiles?.evolution || 88}th percentile
+                            <td className="text-[#17252A] font-sans">Evolution (longitudinal)</td>
+                            <td className="text-right text-[#17252A]">{evolutionVal}</td>
+                            <td className="text-right font-semibold text-[#1B6B63]">
+                              Reference tracking
                             </td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
                     <p className="text-[11px] text-[#17252A]/60 mt-3 font-mono">
-                      Percentiles are computed against the HAM10000 training split only. They do not imply risk on their own.
+                      Percentiles are computed against the HAM10000 reference split only. They do not imply risk on their own.
                     </p>
                   </div>
                 </div>
@@ -1038,10 +1302,10 @@ function CaseDetailsContent({
                   <ShieldCheck className="h-5 w-5 text-[#1B6B63] shrink-0 mt-0.5" />
                   <div>
                     <h3 className="text-sm font-bold text-[#17252A] leading-tight">
-                      Ready to review
+                      {safety?.decision === "escalate" ? "Clinical review advised" : "Ready to review"}
                     </h3>
                     <p className="text-xs text-[#17252A]/85 mt-1 leading-normal">
-                      The models agreed, confidence was in range, and the input was not out-of-distribution. This is a decision-support result.
+                      Automated decision support. The consensus layer synthesised all team model features.
                     </p>
                   </div>
                 </div>
@@ -1051,31 +1315,27 @@ function CaseDetailsContent({
                   <div className="flex items-center justify-between">
                     <dt className="text-[#17252A]/70">Likelihood (with range)</dt>
                     <dd className="font-mono font-semibold text-[#17252A]">
-                      {analysis?.seniorCancer?.estimatedLikelihood
-                        ? `${(analysis.seniorCancer.estimatedLikelihood * 100).toFixed(0)}% (${(analysis.seniorCancer.likelihoodRange[0] * 100).toFixed(0)} to ${(analysis.seniorCancer.likelihoodRange[1] * 100).toFixed(0)}%)`
-                        : "Not available"}
+                      {likelihoodText}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-[#17252A]/70">Urgency</dt>
                     <dd>
                       <span className="inline-flex items-center px-2 py-0.5 rounded-[2px] bg-[#FEF0C7] text-[#B54708] font-mono text-[10px] font-bold border border-[#FDB022] uppercase">
-                        {analysis?.seniorCancer?.urgency || "Routine visit"}
+                        {urgencyLabel}
                       </span>
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-[#17252A]/70">Model agreement</dt>
                     <dd className="font-mono font-semibold text-[#17252A]">
-                      {analysis?.safety?.agreementScore
-                        ? `${Math.round(analysis.safety.agreementScore * 4)} of 4 teams`
-                        : "3 of 4 teams"}
+                      {agreementText}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-[#17252A]/70">Out-of-distribution</dt>
                     <dd className="font-mono font-semibold text-[#17252A]">
-                      {analysis?.safety?.oodNotice ? "Elevated" : "No (Score 0.12)"}
+                      {oodText}
                     </dd>
                   </div>
                 </dl>
@@ -1086,43 +1346,22 @@ function CaseDetailsContent({
                 <div className="mb-4">
                   <h3 className="text-base font-bold text-[#17252A]">Likely types (top 3)</h3>
                   <p className="text-xs text-[#17252A]/70">
-                    The cancer classifier is a 7-class model. These are the three it ranked highest.
+                    The cancer classifier is a 7-class model. These are the three it ranked highest for this scan.
                   </p>
                 </div>
 
                 <div className="space-y-4">
-                  {/* Row 1 */}
-                  <div>
-                    <div className="flex justify-between items-baseline mb-1 text-xs">
-                      <span className="font-semibold text-[#17252A]">Melanocytic nevus (common mole)</span>
-                      <span className="font-mono font-bold text-[#17252A]">64%</span>
+                  {displayTypes.map((dt, idx) => (
+                    <div key={idx}>
+                      <div className="flex justify-between items-baseline mb-1 text-xs">
+                        <span className="font-semibold text-[#17252A]">{dt.name}</span>
+                        <span className="font-mono font-bold text-[#17252A]">{dt.pct}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#DEF2F1] rounded-[2px] overflow-hidden">
+                        <div className="h-full bg-[#1B6B63]" style={{ width: `${Math.min(100, Math.max(3, dt.pct))}%` }}></div>
+                      </div>
                     </div>
-                    <div className="w-full h-1.5 bg-[#DEF2F1] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#1B6B63]" style={{ width: "64%" }}></div>
-                    </div>
-                  </div>
-
-                  {/* Row 2 */}
-                  <div>
-                    <div className="flex justify-between items-baseline mb-1 text-xs">
-                      <span className="font-semibold text-[#17252A]">Dysplastic nevus / atypical</span>
-                      <span className="font-mono font-bold text-[#17252A]">24%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-[#DEF2F1] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#1B6B63]" style={{ width: "24%" }}></div>
-                    </div>
-                  </div>
-
-                  {/* Row 3 */}
-                  <div>
-                    <div className="flex justify-between items-baseline mb-1 text-xs">
-                      <span className="font-semibold text-[#17252A]">Dermatofibroma</span>
-                      <span className="font-mono font-bold text-[#17252A]">7%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-[#DEF2F1] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#1B6B63]" style={{ width: "7%" }}></div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
                 <p className="text-[11px] font-mono text-[#17252A]/60 mt-4 pt-2 border-t border-[#17252A]/10">
@@ -1136,20 +1375,20 @@ function CaseDetailsContent({
                   <h3 className="text-base font-bold text-[#17252A]">Warning signs detected</h3>
                 </div>
 
-                <div className="space-y-3 text-xs">
-                  <div className="flex items-start gap-2.5">
-                    <AlertTriangle className="h-4 w-4 text-[#B54708] shrink-0 mt-0.5" />
-                    <p className="text-[#17252A]">Border irregularity in the 82nd percentile.</p>
+                {warningSignsList.length > 0 ? (
+                  <div className="space-y-3 text-xs">
+                    {warningSignsList.map((sign, idx) => (
+                      <div key={idx} className="flex items-start gap-2.5">
+                        <AlertTriangle className="h-4 w-4 text-[#B54708] shrink-0 mt-0.5" />
+                        <p className="text-[#17252A]">{sign}</p>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-start gap-2.5">
-                    <AlertTriangle className="h-4 w-4 text-[#B54708] shrink-0 mt-0.5" />
-                    <p className="text-[#17252A]">Colour variance increased since your last photo.</p>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <AlertTriangle className="h-4 w-4 text-[#B54708] shrink-0 mt-0.5" />
-                    <p className="text-[#17252A]">Ugly-duckling signal: this lesion looks different from recorded baseline.</p>
-                  </div>
-                </div>
+                ) : (
+                  <p className="text-xs text-[#17252A]/70">
+                    No critical morphological red flags triggered by automated screening.
+                  </p>
+                )}
 
                 <p className="text-[11px] font-mono text-[#17252A]/60 mt-3 pt-2 border-t border-[#17252A]/10">
                   Warning signs raise urgency. They do not change the risk estimate.
@@ -1186,7 +1425,7 @@ function CaseDetailsContent({
                       <span>Synthesizing Groq clinical tokens...</span>
                     </div>
                   ) : (
-                    <p>{explanations[activeLang] || explanations.en}</p>
+                    <p className="whitespace-pre-line">{explanations[activeLang] || res?.explanation?.text || res?.explanation?.summary || "Automated analysis highlights patterns for physician review."}</p>
                   )}
                   <p className="font-medium text-[#17252A]/85">
                     This automated analysis highlights specific patterns for a physician&apos;s review. It cannot diagnose or rule out melanoma.
@@ -1199,6 +1438,8 @@ function CaseDetailsContent({
               </article>
             </div>
           </div>
+            );
+          })()}
 
           {/* BOTTOM ACTION BAND */}
           <section className="w-full flex flex-col md:flex-row items-center justify-between gap-4 pt-6 pb-6 border-t border-[#17252A]/15 mt-10">

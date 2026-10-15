@@ -345,6 +345,7 @@ router.get(
     }
 
     res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cache-Control', 'private, max-age=86400');
     return res.sendFile(filePath);
   })
@@ -373,24 +374,19 @@ router.get(
     }
 
     res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cache-Control', 'private, max-age=86400');
     return res.sendFile(filePath);
   })
 );
 
 /**
- * POST /cases/:id/explanation (calls AI service /v1/explain, caches Report)
+ * GET /cases/:id/analysis (returns raw AI analysis document)
  */
-router.post(
-  '/:id/explanation',
+router.get(
+  '/:id/analysis',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const validation = explanationSchema.safeParse(req.body);
-    if (!validation.success) {
-      return res.status(422).json({ error: 'validation_error', message: 'Invalid language code' });
-    }
-    const language = validation.data.language || 'en';
-
     const caseDoc = await Case.findById(req.params.id);
     if (!caseDoc) {
       return res.status(404).json({ error: 'not_found', message: 'Case not found' });
@@ -401,55 +397,87 @@ router.post(
       return res.status(404).json({ error: 'not_found', message: 'Case not found' });
     }
 
-    // 1. Check if cached report already exists for this case and language
-    const cached = await Report.findOne({ caseId: caseDoc._id, language });
-    if (cached) {
-      return res.status(200).json({ report: cached });
+    const analysis = await Analysis.findOne({ caseId: caseDoc._id }).lean();
+    if (!analysis) {
+      return res.status(404).json({ error: 'not_found', message: 'Analysis not found' });
     }
 
-    // 2. Fetch analysis result
-    const analysis = await Analysis.findOne({ caseId: caseDoc._id });
-    if (!analysis || !analysis.result) {
-      return res.status(400).json({
-        error: 'analysis_incomplete',
-        message: 'Case analysis has not completed yet',
-      });
-    }
-
-    // 3. Call AI service /v1/explain
-    const explainUrl = `${config.AI_SERVICE_URL.replace(/\/+$/, '')}/v1/explain`;
-    const resp = await axios.post(
-      explainUrl,
-      {
-        result: analysis.result,
-        language,
-      },
-      {
-        headers: { 'X-API-Key': config.AI_SERVICE_API_KEY },
-        timeout: config.AI_TIMEOUT_MS || 30000,
-      }
-    );
-
-    const explanationData = resp.data;
-    const report = await Report.create({
-      caseId: caseDoc._id,
-      language,
-      text: explanationData.text || '',
-      source: explanationData.source || 'groq',
+    return res.status(200).json({
+      analysis: analysis.result || analysis,
     });
-
-    await writeAudit({
-      actorId: req.user._id,
-      action: 'CASE_EXPLANATION_GENERATED',
-      entityType: 'Report',
-      entityId: report._id,
-      meta: { caseId: caseDoc._id, language, source: report.source },
-      ip: clientIp(req),
-    });
-
-    return res.status(200).json({ report });
   })
 );
+
+/**
+ * Handler for GET and POST /cases/:id/explanation (calls AI service /v1/explain, caches Report)
+ */
+const handleExplanation = asyncHandler(async (req, res) => {
+  const language = (req.query?.lang || req.body?.language || 'en').toString().toLowerCase();
+  if (!['en', 'ta', 'hi'].includes(language)) {
+    return res.status(422).json({ error: 'validation_error', message: 'Language must be one of en, ta, hi' });
+  }
+
+  const caseDoc = await Case.findById(req.params.id);
+  if (!caseDoc) {
+    return res.status(404).json({ error: 'not_found', message: 'Case not found' });
+  }
+
+  const allowed = await canAccessCase(req.user, caseDoc);
+  if (!allowed) {
+    return res.status(404).json({ error: 'not_found', message: 'Case not found' });
+  }
+
+  // 1. Check if cached report already exists for this case and language
+  const cached = await Report.findOne({ caseId: caseDoc._id, language });
+  if (cached) {
+    return res.status(200).json({ report: cached, text: cached.text });
+  }
+
+  // 2. Fetch analysis result
+  const analysis = await Analysis.findOne({ caseId: caseDoc._id });
+  if (!analysis || !analysis.result) {
+    return res.status(400).json({
+      error: 'analysis_incomplete',
+      message: 'Case analysis has not completed yet',
+    });
+  }
+
+  // 3. Call AI service /v1/explain
+  const explainUrl = `${config.AI_SERVICE_URL.replace(/\/+$/, '')}/v1/explain`;
+  const resp = await axios.post(
+    explainUrl,
+    {
+      result: analysis.result,
+      language,
+    },
+    {
+      headers: { 'X-API-Key': config.AI_SERVICE_API_KEY },
+      timeout: config.AI_TIMEOUT_MS || 30000,
+    }
+  );
+
+  const explanationData = resp.data;
+  const report = await Report.create({
+    caseId: caseDoc._id,
+    language,
+    text: explanationData.text || '',
+    source: explanationData.source || 'groq',
+  });
+
+  await writeAudit({
+    actorId: req.user._id,
+    action: 'CASE_EXPLANATION_GENERATED',
+    entityType: 'Report',
+    entityId: report._id,
+    meta: { caseId: caseDoc._id, language, source: report.source },
+    ip: clientIp(req),
+  });
+
+  return res.status(200).json({ report, text: report.text });
+});
+
+router.get('/:id/explanation', requireAuth, handleExplanation);
+router.post('/:id/explanation', requireAuth, handleExplanation);
 
 /**
  * PATCH /cases/:id/followup { days }

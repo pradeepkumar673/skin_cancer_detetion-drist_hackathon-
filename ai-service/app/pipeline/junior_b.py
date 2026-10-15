@@ -335,14 +335,14 @@ def analyze_cancer_junior_b(
 ) -> Tuple[CancerJuniorB, Optional[float]]:
     """Execute Cancer Junior B comparative assessment."""
     # 1. Ugly duckling
-    if current_embedding is not None and other_embeddings:
+    if current_embedding is not None and other_embeddings is not None and len(other_embeddings) > 0:
         ugly_duckling = compute_ugly_duckling_score(current_embedding, other_embeddings)
     else:
         ugly_duckling = UglyDuckling(score=None, reason="not_enough_other_lesions")
 
     # 2. Longitudinal change
     curr_rgb = np.array(current_image.convert("RGB"))
-    prior_rgb = np.array(prior_image.convert("RGB")) if prior_image else None
+    prior_rgb = np.array(prior_image.convert("RGB")) if prior_image is not None else None
 
     change, evolution_score = compute_longitudinal_change(
         curr_rgb,

@@ -43,42 +43,34 @@ def render_overlay_b64(
 def render_heatmap_b64(
     patch_values: Optional[List[List[float]]] = None,
     grid_size: Tuple[int, int] = (8, 8),
-    target_size: Tuple[int, int] = (256, 256),
+    target_size: Tuple[int, int] = (512, 512),
 ) -> str:
-    """Render 8x8 spatial activation grid into an artifact PNG with discrete clinical steps."""
+    """Render continuous attention and saliency heatmap into an artifact PNG (matching Grad-CAM & patch attribution)."""
     rows, cols = grid_size
     if patch_values and len(patch_values) == rows:
         grid = np.array(patch_values, dtype=np.float32)
     else:
         grid = np.zeros((rows, cols), dtype=np.float32)
 
-    # Render cell-by-cell into target size with discrete palette steps
-    cell_h = target_size[0] // rows
-    cell_w = target_size[1] // cols
+    # Normalize grid 0..1
+    min_v, max_v = float(grid.min()), float(grid.max())
+    if max_v > min_v:
+        norm_grid = (grid - min_v) / (max_v - min_v)
+    else:
+        norm_grid = grid
 
-    heatmap_rgb = np.full((target_size[0], target_size[1], 3), INK_RGB, dtype=np.uint8)
+    # Upsample with smooth bicubic interpolation to target size
+    upsampled = cv2.resize(norm_grid, target_size, interpolation=cv2.INTER_CUBIC)
+    # Smooth with Gaussian filter to match continuous optical thermal activation
+    smoothed = cv2.GaussianBlur(upsampled, (25, 25), 0)
+    smoothed = np.clip(smoothed, 0.0, 1.0)
 
-    for r in range(rows):
-        for c in range(cols):
-            val = float(grid[r, c])
-            # Palette mapping: 0.0 -> INK, 0.35 -> TEAL, 0.70 -> LIGHT_TEAL, >0.85 -> MIST
-            if val < 0.20:
-                color = INK_RGB
-            elif val < 0.50:
-                color = TEAL_RGB
-            elif val < 0.75:
-                color = LIGHT_TEAL_RGB
-            else:
-                color = MIST_RGB
+    # Apply continuous TURBO colormap (deep navy -> cyan -> yellow -> intense red)
+    heatmap_u8 = (smoothed * 255.0).astype(np.uint8)
+    colored = cv2.applyColorMap(heatmap_u8, cv2.COLORMAP_TURBO)
+    colored_rgb = cv2.cvtColor(colored, cv2.COLOR_BGR2RGB)
 
-            y1, y2 = r * cell_h, (r + 1) * cell_h
-            x1, x2 = c * cell_w, (c + 1) * cell_w
-            heatmap_rgb[y1:y2, x1:x2] = color
-
-            # 1px border between grid cells for clean clinical layout
-            cv2.rectangle(heatmap_rgb, (x1, y1), (x2, y2), INK_RGB, 1)
-
-    pil_img = Image.fromarray(heatmap_rgb)
+    pil_img = Image.fromarray(colored_rgb)
     buffer = BytesIO()
     pil_img.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("utf-8")

@@ -39,6 +39,7 @@ export interface UserProfile {
 
 interface AuthContextType {
   user: UserProfile | null;
+  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<UserProfile>;
@@ -53,6 +54,7 @@ const HAS_SESSION_KEY = "skinsentry_has_session";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshUser = async () => {
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (typeof window !== "undefined") {
           localStorage.setItem(HAS_SESSION_KEY, "1");
         }
+        setToken(data.accessToken);
         setUser({
           ...(data.user as unknown as UserProfile),
           verificationStatus: data.verificationStatus,
@@ -70,12 +73,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (typeof window !== "undefined") {
           localStorage.removeItem(HAS_SESSION_KEY);
         }
+        setToken(null);
         setUser(null);
       }
     } catch {
       if (typeof window !== "undefined") {
         localStorage.removeItem(HAS_SESSION_KEY);
       }
+      setToken(null);
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -102,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then((data) => {
         if (!mounted) return;
         if (data?.user) {
+          setToken(data.accessToken);
           setUser({
             ...(data.user as unknown as UserProfile),
             verificationStatus: data.verificationStatus,
@@ -110,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (typeof window !== "undefined") {
             localStorage.removeItem(HAS_SESSION_KEY);
           }
+          setToken(null);
           setUser(null);
         }
         setIsLoading(false);
@@ -119,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (typeof window !== "undefined") {
           localStorage.removeItem(HAS_SESSION_KEY);
         }
+        setToken(null);
         setUser(null);
         setIsLoading(false);
       });
@@ -139,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     setAccessToken(data.accessToken);
+    setToken(data.accessToken);
     if (typeof window !== "undefined") {
       localStorage.setItem(HAS_SESSION_KEY, "1");
     }
@@ -170,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(HAS_SESSION_KEY);
       }
       setAccessToken(null);
+      setToken(null);
       setUser(null);
       disconnectSocket();
     }
@@ -179,6 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        token,
         isAuthenticated: Boolean(user),
         isLoading,
         login,

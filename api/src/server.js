@@ -56,7 +56,11 @@ if (config.NODE_ENV !== 'test') {
 export const app = express();
 
 // Security and middleware setup
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 app.use(
   cors({
     origin: config.CLIENT_URL,
