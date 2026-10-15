@@ -434,7 +434,13 @@ const handleExplanation = asyncHandler(async (req, res) => {
   }
 
   // 2. Fetch analysis result
-  const analysis = await Analysis.findOne({ caseId: caseDoc._id });
+  let analysis = null;
+  if (caseDoc.analysisId) {
+    analysis = await Analysis.findById(caseDoc.analysisId);
+  }
+  if (!analysis || !analysis.result) {
+    analysis = await Analysis.findOne({ caseId: caseDoc._id, result: { $exists: true, $ne: null } }).sort({ createdAt: -1 });
+  }
   if (!analysis || !analysis.result) {
     return res.status(400).json({
       error: 'analysis_incomplete',

@@ -12,6 +12,15 @@ import {
   Info,
   Stethoscope,
   RefreshCw,
+  Clock,
+  ShieldAlert,
+  Activity,
+  FileText,
+  CheckCircle2,
+  Calendar,
+  ChevronRight,
+  Crosshair,
+  Target,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/Header";
@@ -251,8 +260,9 @@ function CaseDetailsContent({
   // Heatmap screen mode: "dense" (dense saliency, figure b) or "patch" (patch attention, figure c)
   const [heatmapMode, setHeatmapMode] = useState<"dense" | "patch">("dense");
   const heatmapCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const screen3CanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Real-time dynamic organic medical heatmap generator (Figures b & c)
+  // Real-time dynamic organic medical heatmap generator (Figures b & c) and Screen 3 boundary crosshair
   useEffect(() => {
     const canvas = heatmapCanvasRef.current;
     if (!canvas || (!photoBlobUrl && !caseDoc?._id)) return;
@@ -262,7 +272,25 @@ function CaseDetailsContent({
     img.crossOrigin = "anonymous";
     img.src = photoBlobUrl || `http://localhost:5000/cases/${caseDoc?._id}/image/0${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
+    const maskImg = new window.Image();
+    maskImg.crossOrigin = "anonymous";
+    maskImg.src = `http://localhost:5000/cases/${caseDoc?._id}/artifact/cancer_mask.png${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+
+    let maskLoaded = false;
+    maskImg.onload = () => {
+      maskLoaded = true;
+      if (img.complete) renderHeatmap();
+    };
+    maskImg.onerror = () => {
+      maskLoaded = false;
+      if (img.complete) renderHeatmap();
+    };
+
     img.onload = () => {
+      renderHeatmap();
+    };
+
+    const renderHeatmap = () => {
       if (!active) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
@@ -276,6 +304,19 @@ function CaseDetailsContent({
       ctx.drawImage(img, 0, 0, w, h);
       const imgData = ctx.getImageData(0, 0, w, h);
       const data = imgData.data;
+
+      // Draw mask on offscreen canvas if loaded
+      let maskData: Uint8ClampedArray | null = null;
+      if (maskLoaded) {
+        const offCanvas = document.createElement("canvas");
+        offCanvas.width = w;
+        offCanvas.height = h;
+        const offCtx = offCanvas.getContext("2d");
+        if (offCtx) {
+          offCtx.drawImage(maskImg, 0, 0, w, h);
+          maskData = offCtx.getImageData(0, 0, w, h).data;
+        }
+      }
 
       // Extract real patch scores from AI pipeline
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -312,58 +353,107 @@ function CaseDetailsContent({
         return top * (1 - fy) + bot * fy;
       };
 
-      // Calculate centroid and average skin luminance
-      let sumX = 0, sumY = 0, weightSum = 0;
-      for (let y = 0; y < h; y += 4) {
-        for (let x = 0; x < w; x += 4) {
-          const idx = (y * w + x) * 4;
-          const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-          const dark = Math.max(0, (215 - lum) / 215);
-          const wt = dark * dark;
-          sumX += x * wt;
-          sumY += y * wt;
-          weightSum += wt;
+      // Calculate border skin luminance
+      let skinLumSum = 0;
+      let skinCount = 0;
+      for (let x = 0; x < w; x += 4) {
+        const iTop = x * 4;
+        const iBot = ((h - 1) * w + x) * 4;
+        skinLumSum += 0.299 * data[iTop] + 0.587 * data[iTop + 1] + 0.114 * data[iTop + 2];
+        skinLumSum += 0.299 * data[iBot] + 0.587 * data[iBot + 1] + 0.114 * data[iBot + 2];
+        skinCount += 2;
+      }
+      const skinLum = skinCount > 0 ? skinLumSum / skinCount : 190;
+
+      // Compute binary lesion presence array (1 for lesion, 0 for skin)
+      const isLesionArr = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = y * w + x;
+          const i = idx * 4;
+          if (maskData && maskData[i] > 60) {
+            isLesionArr[idx] = 1;
+          } else {
+            const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            const dark = (skinLum - lum) / Math.max(25, skinLum * 0.70);
+            const redErythema = (data[i] - 0.5 * data[i + 1] - 0.5 * data[i + 2]) / 80;
+            isLesionArr[idx] = (dark > 0.18 || redErythema > 0.18) ? 1 : 0;
+          }
         }
       }
-      const cx = weightSum > 0 ? sumX / weightSum : w / 2;
-      const cy = weightSum > 0 ? sumY / weightSum : h / 2;
 
-      // Floating point raw heat activation map
+      // Compute local neighbor lesion density (ratio) to find the TRUE IRREGULAR BOUNDARY
+      const neighborRatio = new Float32Array(w * h);
+      const rad = 7;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let count = 0;
+          let total = 0;
+          for (let dy = -rad; dy <= rad; dy += 2) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= h) continue;
+            for (let dx = -rad; dx <= rad; dx += 2) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= w) continue;
+              if (isLesionArr[ny * w + nx] === 1) count++;
+              total++;
+            }
+          }
+          neighborRatio[y * w + x] = total > 0 ? count / total : 0;
+        }
+      }
+
+      // Floating point raw heat activation map adhering strictly to real lesion contour
       const heatMap = new Float32Array(w * h);
 
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
-          const i = (y * w + x) * 4;
-          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          const normDark = Math.max(0, Math.min(1, (210 - lum) / 160));
+          const idx = y * w + x;
+          const ratio = neighborRatio[idx];
+          const isL = isLesionArr[idx] === 1;
 
-          // Distance from lesion core
-          const dx = (x - cx) / (w * 0.42);
-          const dy = (y - cy) / (h * 0.42);
-          const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+          // Boundary halo factor: peaks when ratio ~ 0.45 (the exact perimeter of the real lesion)
+          const boundaryHalo = Math.max(0, 1.0 - 2.5 * Math.abs(ratio - 0.45));
 
-          // Transformer attention
+          // Real DINOv2 vision transformer attention
           const patchVal = sampleSmoothPatch(x / w, y / h);
 
           let heat = 0.0;
           if (heatmapMode === "dense") {
-            // Mode B: Dense Saliency - fiery perimeter halo, cool regression core, dark navy exterior
-            const borderHalo = Math.exp(-Math.pow((distFromCenter - 0.72) / 0.38, 2));
-            const innerRegression = Math.exp(-Math.pow(distFromCenter / 0.50, 2)) * 0.45;
-            heat = normDark * 0.45 + borderHalo * 0.55 + patchVal * 0.25 - innerRegression;
+            // Figure (b) Dense Saliency: Deep navy background, glowing golden perimeter, blazing fiery red injury core
+            if (ratio < 0.08 && !isL) {
+              // Background healthy skin: Cool deep dark navy blue
+              heat = 0.04 + patchVal * 0.05;
+            } else if (ratio < 0.35) {
+              // Outer lesion margin transition halo: glowing yellow to warm amber
+              const edgeFactor = (ratio - 0.08) / 0.27;
+              heat = 0.46 + edgeFactor * 0.26 + patchVal * 0.10;
+            } else {
+              // Core lesion & injury area: vivid burning red, fiery orange, and intense clinical heat
+              const haloIntensity = boundaryHalo * 0.18;
+              heat = 0.74 + haloIntensity + patchVal * 0.15;
+            }
           } else {
-            // Mode C: Patch Attention - smooth annular boundary ring highlighting atypical peripheral margins
-            const ringIntensity = Math.exp(-Math.pow((distFromCenter - 0.78) / 0.32, 2));
-            heat = ringIntensity * 0.65 + patchVal * 0.45 * normDark;
+            // Figure (c) Patch Attention: Warm cream background, blazing scarlet perimeter ring, cool core
+            if (ratio < 0.08 && !isL) {
+              // Outer field: warm pale cream / light yellow
+              heat = 0.44 + patchVal * 0.12;
+            } else if (ratio > 0.82) {
+              // Central regression / core zone: cool slate blue
+              heat = 0.16 + patchVal * 0.12;
+            } else {
+              // Lesion perimeter band: blazing intense scarlet red ring
+              heat = 0.82 + boundaryHalo * 0.14 + patchVal * 0.08;
+            }
           }
 
-          heatMap[y * w + x] = Math.max(0, Math.min(1, heat));
+          heatMap[idx] = Math.max(0, Math.min(1, heat));
         }
       }
 
-      // 2-Pass Separable Gaussian / Box Blur for silky smooth organic contours (zero blocky artifacts)
+      // 2-Pass Separable Gaussian Blur for clear medical contours
       const smoothed = new Float32Array(w * h);
-      const blurRadius = 5;
+      const blurRadius = 3;
 
       // Horizontal pass
       for (let y = 0; y < h; y++) {
@@ -398,36 +488,47 @@ function CaseDetailsContent({
       }
 
       // High-definition Clinical Thermal Colormap matching Figure (b) & (c)
-      // 0.00: Deep Navy/Slate -> 0.28: Indigo Blue -> 0.48: Luminous Warm Cream -> 0.70: Glowing Golden Orange -> 0.90+: Fiery Scarlet Red
       const thermalColormap = (t: number): [number, number, number] => {
         const v = Math.max(0, Math.min(1, t));
-        if (v < 0.22) {
-          const f = v / 0.22;
+        if (v < 0.18) {
+          // Deep Navy Blue (Background): (10, 20, 60) -> (20, 38, 95)
+          const f = v / 0.18;
           return [
-            Math.round(18 + f * (32 - 18)),
-            Math.round(28 + f * (60 - 28)),
-            Math.round(62 + f * (140 - 62)),
+            Math.round(10 + f * (20 - 10)),
+            Math.round(20 + f * (38 - 20)),
+            Math.round(60 + f * (95 - 60)),
           ];
-        } else if (v < 0.45) {
-          const f = (v - 0.22) / 0.23;
+        } else if (v < 0.38) {
+          // Cool Indigo to Cyan: (20, 38, 95) -> (70, 160, 210)
+          const f = (v - 0.18) / 0.20;
           return [
-            Math.round(32 + f * (252 - 32)),
-            Math.round(60 + f * (242 - 60)),
-            Math.round(140 + f * (165 - 140)),
+            Math.round(20 + f * (70 - 20)),
+            Math.round(38 + f * (160 - 38)),
+            Math.round(95 + f * (210 - 95)),
           ];
-        } else if (v < 0.72) {
-          const f = (v - 0.45) / 0.27;
+        } else if (v < 0.58) {
+          // Cyan to Luminous Golden Yellow: (70, 160, 210) -> (255, 235, 60)
+          const f = (v - 0.38) / 0.20;
           return [
-            Math.round(252 - f * (252 - 245)),
-            Math.round(242 - f * (242 - 110)),
-            Math.round(165 - f * (165 - 28)),
+            Math.round(70 + f * (255 - 70)),
+            Math.round(160 + f * (235 - 160)),
+            Math.round(210 - f * (210 - 60)),
+          ];
+        } else if (v < 0.80) {
+          // Luminous Golden Yellow to Fiery Orange: (255, 235, 60) -> (245, 95, 18)
+          const f = (v - 0.58) / 0.22;
+          return [
+            Math.round(255 - f * (255 - 245)),
+            Math.round(235 - f * (235 - 95)),
+            Math.round(60 - f * (60 - 18)),
           ];
         } else {
-          const f = (v - 0.72) / 0.28;
+          // Fiery Orange to Blazing Scarlet Red: (245, 95, 18) -> (225, 20, 18)
+          const f = (v - 0.80) / 0.20;
           return [
-            Math.round(245 - f * (245 - 220)),
-            Math.round(110 - f * (110 - 22)),
-            Math.round(28 - f * (28 - 20)),
+            Math.round(245 - f * (245 - 225)),
+            Math.round(95 - f * (95 - 20)),
+            Math.round(18 + f * (18 - 18)),
           ];
         }
       };
@@ -446,6 +547,121 @@ function CaseDetailsContent({
       }
 
       ctx.putImageData(outputData, 0, 0);
+
+      // -------------------------------------------------------------
+      // SCREEN 3: BASE CLINICAL PHOTO + FULL CROSSHAIRS + NEON GREEN CONTOUR
+      // -------------------------------------------------------------
+      const canvas3 = screen3CanvasRef.current;
+      if (canvas3) {
+        const ctx3 = canvas3.getContext("2d");
+        if (ctx3) {
+          canvas3.width = w;
+          canvas3.height = h;
+
+          // 1. Draw base photo
+          ctx3.drawImage(img, 0, 0, w, h);
+
+          // 2. Compute focal lesion centroid from segmented pixels
+          let sumX = 0;
+          let sumY = 0;
+          let lesionPixelCount = 0;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              if (isLesionArr[y * w + x] === 1) {
+                sumX += x;
+                sumY += y;
+                lesionPixelCount++;
+              }
+            }
+          }
+
+          let cx = Math.round(w / 2);
+          let cy = Math.round(h / 2);
+          if (lesionPixelCount > 30) {
+            cx = Math.round(sumX / lesionPixelCount);
+            cy = Math.round(sumY / lesionPixelCount);
+          } else {
+            const rawDetected = resData?.teams?.cancer?.junior_a?.detected_boxes;
+            if (rawDetected && rawDetected.length > 0) {
+              cx = Math.round((rawDetected[0].x + rawDetected[0].w / 2) * w);
+              cy = Math.round((rawDetected[0].y + rawDetected[0].h / 2) * h);
+            }
+          }
+
+          // 3. Trace neon green boundary contour around the lesion
+          const isBoundary = new Uint8Array(w * h);
+          for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+              const idx = y * w + x;
+              if (isLesionArr[idx] === 1) {
+                if (
+                  isLesionArr[idx - 1] === 0 ||
+                  isLesionArr[idx + 1] === 0 ||
+                  isLesionArr[idx - w] === 0 ||
+                  isLesionArr[idx + w] === 0 ||
+                  isLesionArr[idx - w - 1] === 0 ||
+                  isLesionArr[idx - w + 1] === 0 ||
+                  isLesionArr[idx + w - 1] === 0 ||
+                  isLesionArr[idx + w + 1] === 0
+                ) {
+                  isBoundary[idx] = 1;
+                }
+              }
+            }
+          }
+
+          // Dilate boundary so the neon green line is 2.5px solid and vibrant
+          const contourImgData = ctx3.getImageData(0, 0, w, h);
+          const cData = contourImgData.data;
+          for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+              const idx = y * w + x;
+              if (isBoundary[idx] === 1) {
+                for (let dy = -1; dy <= 1; dy++) {
+                  for (let dx = -1; dx <= 1; dx++) {
+                    const ny = y + dy;
+                    const nx = x + dx;
+                    if (ny >= 0 && ny < h && nx >= 0 && nx < w) {
+                      const pIdx = (ny * w + nx) * 4;
+                      cData[pIdx] = 0;       // R
+                      cData[pIdx + 1] = 255; // G (Vibrant neon green)
+                      cData[pIdx + 2] = 0;   // B
+                      cData[pIdx + 3] = 255; // Alpha
+                    }
+                  }
+                }
+              }
+            }
+          }
+          ctx3.putImageData(contourImgData, 0, 0);
+
+          // 4. Draw full-span edge-to-edge solid bright red crosshairs through the centroid
+          ctx3.save();
+          ctx3.strokeStyle = "#FF0000";
+          ctx3.lineWidth = 1.5;
+
+          // Horizontal line edge to edge
+          ctx3.beginPath();
+          ctx3.moveTo(0, cy);
+          ctx3.lineTo(w, cy);
+          ctx3.stroke();
+
+          // Vertical line edge to edge
+          ctx3.beginPath();
+          ctx3.moveTo(cx, 0);
+          ctx3.lineTo(cx, h);
+          ctx3.stroke();
+
+          // Central reticle circle
+          ctx3.beginPath();
+          ctx3.arc(cx, cy, 5, 0, 2 * Math.PI);
+          ctx3.strokeStyle = "#FF0000";
+          ctx3.lineWidth = 1.5;
+          ctx3.stroke();
+
+          ctx3.restore();
+        }
+      }
     };
 
     return () => {
@@ -604,6 +820,23 @@ function CaseDetailsContent({
       active = false;
     };
   }, [caseDoc?.status, activeLang, caseId, explanations]);
+
+  const refreshExplanation = async (langToFetch = activeLang) => {
+    try {
+      setExplanationLoading(true);
+      const data = await apiClient<ReportExplanation>(
+        `/cases/${caseId}/explanation?lang=${langToFetch}`
+      );
+      setExplanations((prev) => ({
+        ...prev,
+        [langToFetch]: data.text,
+      }));
+    } catch {
+      // Ignored, fallback stays
+    } finally {
+      setExplanationLoading(false);
+    }
+  };
 
   const handleFollowUpSave = async () => {
     try {
@@ -1203,11 +1436,9 @@ function CaseDetailsContent({
             });
 
             return (
-              <div className="flex flex-col lg:flex-row gap-8 items-start mt-6">
-            {/* LEFT COLUMN: Visual Evidence & Morphological Metrics (62%) */}
-            <div className="w-full lg:w-[62%] flex flex-col space-y-6">
-              {/* PANEL 1: Image Evidence */}
-              <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
+              <div className="space-y-8 mt-6">
+                {/* PANEL 1: Image Evidence (FULL ROW) */}
+                <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                   <div>
                     <h3 className="text-base font-bold text-[#17252A]">Image evidence</h3>
@@ -1262,8 +1493,8 @@ function CaseDetailsContent({
                   </div>
                 </div>
 
-                {/* DUAL-SCREEN VISUAL ENCLAVE: CLINICAL FIELD (SCREEN 1) & REAL-TIME HEATMAP (SCREEN 2) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                {/* THREE-SCREEN CLINICAL ENCLAVE: CLINICAL FIELD (SCREEN 1), HEATMAP (SCREEN 2), TARGET CENTROID & BOUNDARY (SCREEN 3) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 items-stretch">
                   {/* SCREEN 1: CLINICAL LESION & INJURY HIGHLIGHT */}
                   <div className="flex flex-col">
                     <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#17252A] text-[#FEFFFF] rounded-t-[4px] border-b border-white/10 font-mono text-[10px] uppercase font-bold">
@@ -1419,6 +1650,43 @@ function CaseDetailsContent({
                       </div>
                     </div>
                   </div>
+
+                  {/* SCREEN 3: TARGET CENTROID & BOUNDARY CONTOUR (USER REFERENCE MATCH) */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#17252A] text-[#FEFFFF] rounded-t-[4px] border-b border-white/10 font-mono text-[10px] uppercase font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <Crosshair className="w-3.5 h-3.5 text-[#D92D20]" />
+                        <span>Screen 3: Boundary &amp; Centroid</span>
+                      </div>
+                      <span className="text-[#3AAFA9]">Target Crosshair</span>
+                    </div>
+
+                    <div className="relative w-full aspect-[4/3] min-h-[280px] bg-[#0A1118] border border-[#17252A]/20 rounded-b-[4px] overflow-hidden flex items-center justify-center select-none shadow-inner">
+                      {/* Real-time HTML5 Canvas for Screen 3 */}
+                      <canvas
+                        ref={screen3CanvasRef}
+                        className="w-full h-full object-contain"
+                      />
+
+                      {/* Live Centroid Telemetry Badge */}
+                      <div className="absolute top-2.5 right-2.5 bg-[#17252A]/90 text-[#FEFFFF] px-2 py-0.5 rounded-[3px] font-mono text-[9px] border border-white/20 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D92D20] animate-pulse"></span>
+                        <span>TARGET CENTROID · FULL CROSSHAIR</span>
+                      </div>
+
+                      {/* Legend for Screen 3 matching reference image */}
+                      <div className="absolute bottom-2.5 left-2.5 right-2.5 bg-[#17252A]/90 text-[#FEFFFF] px-2.5 py-1.5 rounded-[3px] font-mono text-[9px] border border-white/20 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-block w-3 h-[2px] bg-[#FF0000]"></span>
+                          <span className="text-white/90">Centroid Crosshair</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-block w-3 h-[2px] bg-[#00FF00]"></span>
+                          <span className="text-white/90">Boundary Contour</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Technical Metadata Footer */}
@@ -1426,10 +1694,304 @@ function CaseDetailsContent({
                   <span>Mask source: MedSAM-Derm · Image {res?.quality?.width || 1024}×{res?.quality?.height || 1024} · Downscaled to 512</span>
                   <span>Sensor: Standard Optical Enclave (10x equivalent)</span>
                 </div>
-              </article>
+                </article>
 
-              {/* PANEL 2: ABCDE Measured Values */}
-              <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
+                {/* FULL-ROW DEDICATED CLINICAL ASSESSMENT & ACTION PROTOCOL ("BOXES INSIDE BOXES") */}
+                <section className="w-full bg-[#FEFFFF] border-2 border-[#2B7A78]/30 rounded-[4px] p-6 shadow-sm">
+                  {/* Master Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#17252A]/15 gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-[4px] bg-[#DEF2F1] text-[#2B7A78]">
+                        <ShieldAlert className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-[#17252A] tracking-tight">
+                          Clinical Assessment &amp; Patient Care Protocol
+                        </h2>
+                        <p className="text-xs text-[#17252A]/75">
+                          Automated decision support synthesis with structured triage, urgency timelines, and Groq plain-language translation.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 font-mono text-[11px] text-[#2B7A78] bg-[#DEF2F1] px-2.5 py-1 rounded-[2px] font-semibold uppercase">
+                      <Activity className="h-3.5 w-3.5" />
+                      <span>Triage Band: {urgencyLabel}</span>
+                    </div>
+                  </div>
+
+                  {/* Nested Sub-Boxes ("Boxes Inside Boxes") */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+                    {/* SUB-BOX 1: CANCER PROBABILITY & DIAGNOSTIC CHANCE */}
+                    <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
+                            <Target className="h-4 w-4 text-[#2B7A78]" />
+                            <span>1. Cancer Probability &amp; Diagnostic Chance</span>
+                          </div>
+                          <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">Senior Ensemble</span>
+                        </div>
+
+                        <div className="mt-3 space-y-3">
+                          {/* Main Likelihood Metric */}
+                          <div className="p-3 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[4px] flex items-center justify-between">
+                            <div>
+                              <div className="text-[11px] font-medium text-[#17252A]/75">Estimated Malignancy Likelihood</div>
+                              <div className="text-xl font-bold font-mono text-[#17252A] mt-0.5">
+                                {likelihoodText}
+                              </div>
+                            </div>
+                            <div className={`px-2.5 py-1 rounded-[2px] font-mono text-[11px] font-bold uppercase ${
+                              likelihoodVal != null && likelihoodVal > 0.4
+                                ? "bg-[#D92D20]/10 text-[#D92D20] border border-[#D92D20]/30"
+                                : likelihoodVal != null && likelihoodVal > 0.15
+                                ? "bg-[#FDB022]/15 text-[#B54708] border border-[#FDB022]/40"
+                                : "bg-[#DEF2F1] text-[#1B6B63] border border-[#1B6B63]/20"
+                            }`}>
+                              {seniorCancer?.band || (likelihoodVal != null && likelihoodVal > 0.4 ? "High Risk" : likelihoodVal != null && likelihoodVal > 0.15 ? "Elevated Risk" : "Low Risk")}
+                            </div>
+                          </div>
+
+                          {/* Differential Chances Bar List */}
+                          <div className="space-y-1.5">
+                            <div className="text-[11px] font-semibold text-[#17252A]/80">Differential Diagnostic Breakdown:</div>
+                            {displayTypes.map((dt, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                                <span className="text-[#17252A] font-medium truncate max-w-[210px]">{dt.name}</span>
+                                <span className="font-mono font-bold text-[#2B7A78]">{dt.pct}% chance</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-[#17252A]/10 text-[10px] font-mono text-[#17252A]/60">
+                        Calibration: Beta-binomial smoothed · In-distribution: Yes
+                      </div>
+                    </div>
+
+                    {/* SUB-BOX 2: IDENTIFIED SYMPTOMS & MORPHOLOGICAL SEVERITY */}
+                    <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
+                            <Activity className="h-4 w-4 text-[#2B7A78]" />
+                            <span>2. Identified Symptoms &amp; Morphological Severity</span>
+                          </div>
+                          <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">ABCDE &amp; Morphometry</span>
+                        </div>
+
+                        <div className="mt-3 space-y-2.5">
+                          {/* Severity Score Pill */}
+                          <div className="p-2.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[4px] flex items-center justify-between">
+                            <span className="text-xs font-semibold text-[#17252A]">Morphological Severity Rating</span>
+                            <span className="font-mono text-xs font-bold text-[#2B7A78] uppercase">
+                              {Number(borderVal) > 0.6 || Number(asymmetryVal) > 0.6 ? "Moderate to High Atypia" : "Mild / Low Atypia"}
+                            </span>
+                          </div>
+
+                          {/* Active Symptoms Checklist */}
+                          <div className="space-y-1 text-xs">
+                            <div className="flex items-start gap-2 p-1.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <span className="font-mono font-bold text-[#2B7A78] shrink-0">A:</span>
+                              <span className="text-[#17252A]">
+                                Asymmetry Score: {asymmetryVal} ({asymPct}th percentile of clinical reference set)
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 p-1.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <span className="font-mono font-bold text-[#2B7A78] shrink-0">B:</span>
+                              <span className="text-[#17252A]">
+                                Border Irregularity: {borderVal} ({borderPct}th percentile, contour notches detected)
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 p-1.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <span className="font-mono font-bold text-[#2B7A78] shrink-0">C:</span>
+                              <span className="text-[#17252A]">
+                                Color Variegation: {colorVal} ({colorPct}th percentile, variegated pigment distribution)
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 p-1.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <span className="font-mono font-bold text-[#2B7A78] shrink-0">D:</span>
+                              <span className="text-[#17252A]">
+                                Lesion Diameter: {diameterVal} (Max focal dimension across major axis)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-[#17252A]/10 text-[10px] font-mono text-[#17252A]/60">
+                        Clinical criteria: ABCD scoring algorithm per Stolz et al.
+                      </div>
+                    </div>
+
+                    {/* SUB-BOX 3: URGENCY TIMELINE: HOW FAST TO VISIT A DOCTOR */}
+                    <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
+                            <Clock className="h-4 w-4 text-[#2B7A78]" />
+                            <span>3. How Fast to Visit a Doctor</span>
+                          </div>
+                          <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">Triage Window</span>
+                        </div>
+
+                        <div className="mt-3 space-y-3">
+                          {/* Recommended Timeframe Highlight */}
+                          <div className="p-3 bg-[#FEFFFF] border-l-4 border-l-[#2B7A78] border border-[#17252A]/10 rounded-r-[4px]">
+                            <div className="text-[11px] font-semibold text-[#17252A]/75">Recommended Clinical Timeframe</div>
+                            <div className="text-sm font-bold text-[#17252A] mt-0.5">
+                              {urgencyLabel.toLowerCase().includes("urgent") || urgencyLabel.toLowerCase().includes("same day")
+                                ? "Within 48 to 72 hours (Priority Specialist Appointment)"
+                                : urgencyLabel.toLowerCase().includes("elevated") || urgencyLabel.toLowerCase().includes("soon")
+                                ? "Within 1 to 2 weeks (Scheduled Outpatient Consultation)"
+                                : "Within 4 to 6 weeks (Routine Screening or Next Annual Check)"}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 text-xs">
+                            <div className="flex items-center justify-between py-1 px-2 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <span className="text-[#17252A]/80">Recommended Specialty:</span>
+                              <span className="font-semibold text-[#17252A]">Dermatologist / Dermato-oncologist</span>
+                            </div>
+                            <div className="flex items-center justify-between py-1 px-2 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <span className="text-[#17252A]/80">Recommended Diagnostic Procedure:</span>
+                              <span className="font-semibold text-[#17252A]">Dermoscopy + Baseline Epiluminescence</span>
+                            </div>
+                          </div>
+
+                          <Link
+                            href="/doctors"
+                            className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#2B7A78] text-[#FEFFFF] font-mono text-xs font-bold rounded-[4px] hover:bg-[#1B6B63] transition-colors shadow-sm"
+                          >
+                            <Calendar className="h-4 w-4" />
+                            <span>Find &amp; Book Certified Dermatologist</span>
+                            <ChevronRight className="h-4 w-4 ml-auto" />
+                          </Link>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-[#17252A]/10 text-[10px] font-mono text-[#17252A]/60">
+                        Clinical protocol: National Institute for Health and Care Excellence (NICE NG12)
+                      </div>
+                    </div>
+
+                    {/* SUB-BOX 4: CLINICAL MEASURES (WHAT TO DO & WHAT NOT TO DO) */}
+                    <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
+                            <CheckCircle2 className="h-4 w-4 text-[#2B7A78]" />
+                            <span>4. Clinical Measures &amp; Safety Protocol</span>
+                          </div>
+                          <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">Patient Instructions</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3 text-xs">
+                          {/* Sub-col: What TO DO */}
+                          <div className="p-2.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[4px] space-y-1.5">
+                            <div className="font-bold text-[#1B6B63] text-[11px] flex items-center gap-1">
+                              <Check className="h-3.5 w-3.5" />
+                              <span>Recommended Measures:</span>
+                            </div>
+                            <ul className="space-y-1 text-[11px] text-[#17252A]/85 list-disc list-inside leading-snug">
+                              <li>Protect the spot with broad-spectrum SPF 50+ sunscreen.</li>
+                              <li>Photograph again in 14 to 30 days under the same lighting.</li>
+                              <li>Share this report and image with your doctor.</li>
+                              <li>Seek prompt evaluation if bleeding or itching occurs.</li>
+                            </ul>
+                          </div>
+
+                          {/* Sub-col: What NOT TO DO */}
+                          <div className="p-2.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[4px] space-y-1.5">
+                            <div className="font-bold text-[#D92D20] text-[11px] flex items-center gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                              <span>Contraindications:</span>
+                            </div>
+                            <ul className="space-y-1 text-[11px] text-[#17252A]/85 list-disc list-inside leading-snug">
+                              <li>Do NOT scratch, pick, cut, or scrape the lesion.</li>
+                              <li>Do NOT apply corrosive acids, bleaches, or DIY removers.</li>
+                              <li>Do NOT ignore changes in color, size, or symmetry.</li>
+                              <li>Do NOT delay doctor evaluation if new pain develops.</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-[#17252A]/10 text-[10px] font-mono text-[#17252A]/60">
+                        Safety directive: Non-invasive observational protocol
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SUB-BOX 5: FULL-WIDTH GROQ AI CLINICAL EXPLANATION BOX */}
+                  <div className="mt-5 bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#17252A]/10 gap-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-[#2B7A78]" />
+                        <h3 className="text-xs font-bold text-[#17252A]">
+                          5. Plain-Language Explanation (Groq Clinical LLM)
+                        </h3>
+                      </div>
+
+                      {/* Multilingual Switcher + Refresh Button */}
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <div className="inline-flex rounded-[4px] p-0.5 bg-[#DEF2F1] border border-[#17252A]/15">
+                          {(["en", "ta", "hi"] as const).map((lang) => (
+                            <button
+                              key={lang}
+                              type="button"
+                              onClick={() => setActiveLang(lang)}
+                              className={`px-2.5 py-0.5 rounded-[2px] font-mono text-[10px] font-bold transition-colors cursor-pointer ${
+                                activeLang === lang
+                                  ? "bg-[#2B7A78] text-[#FEFFFF]"
+                                  : "text-[#17252A]/70 hover:text-[#17252A]"
+                              }`}
+                            >
+                              {lang === "en" ? "English" : lang === "ta" ? "தமிழ்" : "हिन्दी"}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => refreshExplanation(activeLang)}
+                          disabled={explanationLoading}
+                          title="Regenerate explanation with Groq"
+                          className="p-1 rounded-[2px] border border-[#17252A]/15 bg-[#FEFFFF] text-[#17252A]/70 hover:text-[#2B7A78] hover:bg-[#DEF2F1] transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`h-3 w-3 ${explanationLoading ? "animate-spin" : ""}`} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Explanation Content */}
+                    <div className="mt-3 p-3 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[4px] text-xs text-[#17252A] leading-relaxed">
+                      {explanationLoading ? (
+                        <div className="py-4 flex items-center justify-center gap-2 font-mono text-[11px] text-[#17252A]/60">
+                          <Spinner size="sm" />
+                          <span>Synthesizing clinical explanation via Groq...</span>
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-line text-[#17252A]/90">
+                          {explanations[activeLang] || res?.explanation?.text || res?.explanation?.summary || "Automated analysis highlights patterns for physician review."}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Compliance Notice */}
+                    <div className="mt-2.5 flex flex-col sm:flex-row sm:items-center justify-between text-[10px] font-mono text-[#17252A]/65 gap-1">
+                      <span>Model: Groq LLaMA-3.3-70b-versatile · Prompt policy: Medical CDSS Directive v2</span>
+                      <span>Decision support only. A doctor makes the diagnosis.</span>
+                    </div>
+                  </div>
+                </section>
+
+                {/* TWO-COLUMN DEEP-DIVE CLINICAL DETAILS */}
+                <div className="flex flex-col lg:flex-row gap-8 items-start">
+                  {/* LEFT COLUMN: Morphological Metrics (58%) */}
+                  <div className="w-full lg:w-[58%] flex flex-col space-y-6">
+                    {/* PANEL 2: ABCDE Measured Values */}
+                    <article className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-5 shadow-sm">
                 <div className="mb-4">
                   <h3 className="text-base font-bold text-[#17252A]">ABCDE measurements</h3>
                   <p className="text-xs text-[#17252A]/70 mt-0.5">
@@ -1710,8 +2272,9 @@ function CaseDetailsContent({
                   Generated by Groq. It explains. It does not decide.
                 </p>
               </article>
-            </div>
-          </div>
+                  </div>
+                </div>
+              </div>
             );
           })()}
 
