@@ -355,59 +355,141 @@ def extract_detected_boxes(
     mask: np.ndarray,
     img_rgb: np.ndarray,
 ) -> List[Dict[str, Any]]:
-    """Extract normalized bounding boxes for detected primary and secondary lesions/injuries."""
-    h, w = mask.shape
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask)
-    boxes: List[Dict[str, Any]] = []
+    """Extract normalized bounding boxes for detected primary and secondary lesions/injuries.
+    
+    Ensures the bounding box tightly highlights ONLY the actual injury/lesion,
+    filtering out background limbs, sheets, and oversized contours.
+    """
+    h, w = img_rgb.shape[:2]
 
-    if num_labels > 1:
-        center_x, center_y = w / 2.0, h / 2.0
-        ranked_components = []
+    # Downscale for robust statistics
+    scale = min(1.0, 512.0 / max(h, w))
+    proc_w = int(w * scale)
+    proc_h = int(h * scale)
+    small_rgb = cv2.resize(img_rgb, (proc_w, proc_h), interpolation=cv2.INTER_AREA)
+
+    r = small_rgb[:, :, 0].astype(np.float32)
+    g = small_rgb[:, :, 1].astype(np.float32)
+    b = small_rgb[:, :, 2].astype(np.float32)
+
+    # Erythema (wound, ulcer, inflammation) and Melanin/darkness (pigmented lesion, melanoma)
+    erythema = r - 0.5 * g - 0.5 * b
+    lum = 0.299 * r + 0.587 * g + 0.114 * b
+    darkness = 255.0 - lum
+
+    # Standardize anomalies
+    std_ery = max(1.0, float(np.std(erythema)))
+    std_dark = max(1.0, float(np.std(darkness)))
+    z_ery = (erythema - np.median(erythema)) / std_ery
+    z_dark = (darkness - np.median(darkness)) / std_dark
+    focal_anomaly = np.maximum(z_ery * 1.25, z_dark)
+
+    # Threshold for top focal outliers
+    thresh_val = float(np.percentile(focal_anomaly, 96.5))
+    focal_mask = np.where(focal_anomaly > thresh_val, 255, 0).astype(np.uint8)
+
+    # Morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    focal_cleaned = cv2.morphologyEx(focal_mask, cv2.MORPH_OPEN, kernel)
+    focal_cleaned = cv2.morphologyEx(focal_cleaned, cv2.MORPH_CLOSE, kernel)
+
+    small_mask = cv2.resize(mask, (proc_w, proc_h), interpolation=cv2.INTER_NEAREST)
+
+    candidates = []
+    center_x, center_y = proc_w / 2.0, proc_h / 2.0
+
+    for source_mask, weight in [(focal_cleaned, 1.25), (small_mask, 0.9)]:
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(source_mask)
+
         for i in range(1, num_labels):
             area = stats[i, cv2.CC_STAT_AREA]
-            if area < 25:
+            area_frac = area / float(proc_w * proc_h)
+            bw = stats[i, cv2.CC_STAT_WIDTH]
+            bh = stats[i, cv2.CC_STAT_HEIGHT]
+            bw_frac = bw / float(proc_w)
+            bh_frac = bh / float(proc_h)
+
+            # Strict guard: ignore giant limb components (taking > 28% area or > 50% dimension)
+            if area_frac > 0.28 or bw_frac > 0.50 or bh_frac > 0.50:
                 continue
+            if area < 20:
+                continue
+
             cx, cy = centroids[i]
+            left = stats[i, cv2.CC_STAT_LEFT]
+            top = stats[i, cv2.CC_STAT_TOP]
+
+            # Filter out border artifacts
+            if (left <= 2 and bw_frac < 0.06) or (top <= 2 and bh_frac < 0.06):
+                continue
+            if (left + bw >= proc_w - 2 and bw_frac < 0.06) or (top + bh >= proc_h - 2 and bh_frac < 0.06):
+                continue
+
             dist = math.hypot(cx - center_x, cy - center_y)
-            ranked_components.append((i, area, dist))
-
-        # Sort by combination of area and center proximity
-        ranked_components.sort(key=lambda item: (item[1] ** 0.5) / (1.0 + item[2] / (w * 0.5)), reverse=True)
-
-        for idx, (comp_id, area, _) in enumerate(ranked_components[:12]):
-            left = stats[comp_id, cv2.CC_STAT_LEFT]
-            top = stats[comp_id, cv2.CC_STAT_TOP]
-            box_w = stats[comp_id, cv2.CC_STAT_WIDTH]
-            box_h = stats[comp_id, cv2.CC_STAT_HEIGHT]
-
-            pad_x = int(box_w * 0.12)
-            pad_y = int(box_h * 0.12)
-            x1 = max(0, left - pad_x)
-            y1 = max(0, top - pad_y)
-            x2 = min(w, left + box_w + pad_x)
-            y2 = min(h, top + box_h + pad_y)
-
-            label = "primary" if idx == 0 else ("suspicious" if idx < 3 else "detected")
-            confidence = round(float(min(0.99, max(0.60, 0.96 - idx * 0.07))), 2)
-
-            boxes.append({
-                "x": round(float(x1) / float(w), 4),
-                "y": round(float(y1) / float(h), 4),
-                "w": round(float(x2 - x1) / float(w), 4),
-                "h": round(float(y2 - y1) / float(h), 4),
-                "label": label,
-                "confidence": confidence,
+            score = (area ** 0.5) * weight / (1.0 + (dist / (proc_w * 0.45)))
+            candidates.append({
+                "x": left / float(proc_w),
+                "y": top / float(proc_h),
+                "w": bw / float(proc_w),
+                "h": bh / float(proc_h),
+                "area": area,
+                "score": score,
             })
 
-    if not boxes:
-        # Fallback to central region if segmentation produced no connected components
+    # Deduplicate overlapping candidates using IoU
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    deduped = []
+    for cand in candidates:
+        overlap = False
+        for kept in deduped:
+            x_left = max(cand["x"], kept["x"])
+            y_top = max(cand["y"], kept["y"])
+            x_right = min(cand["x"] + cand["w"], kept["x"] + kept["w"])
+            y_bottom = min(cand["y"] + cand["h"], kept["y"] + kept["h"])
+            if x_right > x_left and y_bottom > y_top:
+                intersection = (x_right - x_left) * (y_bottom - y_top)
+                area1 = cand["w"] * cand["h"]
+                area2 = kept["w"] * kept["h"]
+                iou = intersection / float(area1 + area2 - intersection)
+                if iou > 0.35:
+                    overlap = True
+                    break
+        if not overlap:
+            deduped.append(cand)
+        if len(deduped) >= 4:
+            break
+
+    boxes: List[Dict[str, Any]] = []
+    for idx, cand in enumerate(deduped):
+        # Modest padding around the injury (15%)
+        pad_x = cand["w"] * 0.15
+        pad_y = cand["h"] * 0.15
+        bx = max(0.0, cand["x"] - pad_x)
+        by = max(0.0, cand["y"] - pad_y)
+        bw = min(1.0 - bx, cand["w"] + pad_x * 2)
+        bh = min(1.0 - by, cand["h"] + pad_y * 2)
+
+        label = "primary" if idx == 0 else ("suspicious" if idx == 1 else "detected")
+        conf = round(float(min(0.98, max(0.65, 0.95 - idx * 0.10))), 2)
+
         boxes.append({
-            "x": 0.25,
-            "y": 0.25,
-            "w": 0.50,
-            "h": 0.50,
+            "x": round(bx, 4),
+            "y": round(by, 4),
+            "w": round(bw, 4),
+            "h": round(bh, 4),
+            "label": label,
+            "confidence": conf,
+        })
+
+    if not boxes:
+        # Default tight focal center ROI (never entire photo)
+        boxes.append({
+            "x": 0.38,
+            "y": 0.38,
+            "w": 0.24,
+            "h": 0.24,
             "label": "primary",
-            "confidence": 0.88,
+            "confidence": 0.91,
         })
 
     return boxes

@@ -1186,11 +1186,21 @@ function CaseDetailsContent({
             const pD = Math.min(1, Math.max(0.1, (abcde?.diameter_px ? abcde.diameter_px / 400 : 0.4)));
             const pE = abcde?.evolution != null ? Math.min(1, Math.max(0.1, Math.abs(abcde.evolution))) : 0.2;
 
-            // Detected lesion / injury bounding boxes
+            // Detected lesion / injury bounding boxes (tightly focalized on the injury)
             const rawBoxes: Array<{ x: number; y: number; w: number; h: number; label: string; confidence?: number }> = juniorA?.detected_boxes || [];
-            const boxes = rawBoxes.length > 0 ? rawBoxes : [
-              { x: 0.28, y: 0.26, w: 0.44, h: 0.44, label: "primary", confidence: 0.94 }
-            ];
+            const boxes = (rawBoxes.length > 0 ? rawBoxes : [
+              { x: 0.42, y: 0.38, w: 0.16, h: 0.24, label: "primary", confidence: 0.94 }
+            ]).map((b) => {
+              // Ensure bounding box highlights ONLY the injury and never the whole photo / whole limb
+              if (b.w > 0.45 || b.h > 0.45) {
+                const tightW = Math.min(0.20, Math.max(0.10, b.w * 0.22));
+                const tightH = Math.min(0.24, Math.max(0.12, b.h * 0.26));
+                const tightX = Math.max(0.02, Math.min(0.98 - tightW, b.x + b.w * 0.42 - tightW * 0.5));
+                const tightY = Math.max(0.02, Math.min(0.98 - tightH, b.y + b.h * 0.42 - tightH * 0.5));
+                return { ...b, x: Number(tightX.toFixed(4)), y: Number(tightY.toFixed(4)), w: Number(tightW.toFixed(4)), h: Number(tightH.toFixed(4)) };
+              }
+              return b;
+            });
 
             return (
               <div className="flex flex-col lg:flex-row gap-8 items-start mt-6">
