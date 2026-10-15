@@ -13,7 +13,7 @@ import base64
 from io import BytesIO
 import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import joblib
 import numpy as np
