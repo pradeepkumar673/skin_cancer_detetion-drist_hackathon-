@@ -44,13 +44,12 @@ export default function NewScreeningPage() {
   const [showTips, setShowTips] = useState<boolean>(false);
 
   // Form State
-  const [classification, setClassification] = useState<"lesion" | "wound" | "rash">("lesion");
-  const [selectedSites, setSelectedSites] = useState<string[]>(["Trunk"]);
-  const [lesionLabel, setLesionLabel] = useState<string>("Left shoulder spot");
+  const [selectedSites, setSelectedSites] = useState<string[]>([]);
+  const [lesionLabel, setLesionLabel] = useState<string>("");
   const [duration, setDuration] = useState<string>("1_4_weeks");
-  const [recentChange, setRecentChange] = useState<string>("slightly");
+  const [recentChange, setRecentChange] = useState<string>("no");
   const [hasScale, setHasScale] = useState<boolean>(false);
-  const [notes, setNotes] = useState<string>("Mild itching described over last two weeks.");
+  const [notes, setNotes] = useState<string>("");
   const [existingLabels, setExistingLabels] = useState<string[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
@@ -136,11 +135,16 @@ export default function NewScreeningPage() {
       return;
     }
 
+    if (selectedSites.length === 0) {
+      setServerError("Please select where on the body the photograph was taken.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       const formData = new FormData();
       formData.append("image", imageFile);
-      formData.append("bodySite", selectedSites.length > 0 ? selectedSites[0].toLowerCase() : "chest");
+      formData.append("bodySite", selectedSites[0].toLowerCase());
       if (lesionLabel.trim()) {
         formData.append("lesionLabel", lesionLabel.trim());
       }
@@ -148,7 +152,6 @@ export default function NewScreeningPage() {
       formData.append("language", user?.languagePref || "en");
 
       const contextObj: Record<string, unknown> = {
-        category: classification,
         bodySites: selectedSites,
         duration,
         recentChange,
@@ -371,51 +374,7 @@ export default function NewScreeningPage() {
 
             {/* 4. Clinical Context Form Section */}
             <div className="bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] p-6 space-y-6 shadow-sm">
-              {/* Group A: Categorization */}
-              <fieldset className="space-y-2">
-                <legend className="text-xs font-bold uppercase tracking-wider text-[#17252A]">
-                  What is this a photo of?
-                </legend>
-                <div className="grid grid-cols-3 gap-1 bg-[#DEF2F1]/30 p-1 rounded-[4px] border border-[#17252A]/15">
-                  <button
-                    type="button"
-                    onClick={() => setClassification("lesion")}
-                    className={`py-2 px-3 text-center rounded-[2px] text-xs font-bold transition-colors ${
-                      classification === "lesion"
-                        ? "bg-[#2B7A78] text-[#FEFFFF]"
-                        : "text-[#17252A]/80 hover:bg-[#FEFFFF]"
-                    }`}
-                  >
-                    Skin lesion
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setClassification("wound")}
-                    className={`py-2 px-3 text-center rounded-[2px] text-xs font-bold transition-colors ${
-                      classification === "wound"
-                        ? "bg-[#2B7A78] text-[#FEFFFF]"
-                        : "text-[#17252A]/80 hover:bg-[#FEFFFF]"
-                    }`}
-                  >
-                    Wound or ulcer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setClassification("rash")}
-                    className={`py-2 px-3 text-center rounded-[2px] text-xs font-bold transition-colors ${
-                      classification === "rash"
-                        ? "bg-[#2B7A78] text-[#FEFFFF]"
-                        : "text-[#17252A]/80 hover:bg-[#FEFFFF]"
-                    }`}
-                  >
-                    Rash
-                  </button>
-                </div>
-              </fieldset>
-
-              <div className="border-t border-[#17252A]/10"></div>
-
-              {/* Group B: Anatomical Site */}
+              {/* Anatomical Site */}
               <fieldset className="space-y-1">
                 <legend className="text-xs font-bold uppercase tracking-wider text-[#17252A]">
                   Where on the body?
@@ -494,8 +453,8 @@ export default function NewScreeningPage() {
                         className="w-full h-10 px-3 bg-[#FEFFFF] border border-[#17252A]/20 rounded-[4px] text-xs text-[#17252A] focus:outline-none focus:border-[#2B7A78] transition-colors cursor-pointer"
                       >
                         <option value="under_1_week">&lt;1 week</option>
-                        <option value="1_4_weeks">1–4 weeks</option>
-                        <option value="1_6_months">1–6 months</option>
+                        <option value="1_4_weeks">1 to 4 weeks</option>
+                        <option value="1_6_months">1 to 6 months</option>
                         <option value="over_6_months">&gt;6 months</option>
                         <option value="not_sure">not sure</option>
                       </select>

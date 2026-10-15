@@ -36,8 +36,19 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${ibmPlexSans.variable} ${ibmPlexMono.variable} ${courierPrime.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-[#FEFFFF] text-[#17252A]">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var b=document.body;if(b&&b.hasAttribute('cz-shortcut-listen')){b.removeAttribute('cz-shortcut-listen');}}catch(e){}`,
+          }}
+        />
+      </head>
+      <body
+        className="min-h-full flex flex-col bg-[#FEFFFF] text-[#17252A]"
+        suppressHydrationWarning
+      >
         <AuthProvider>
           <ToastProvider>{children}</ToastProvider>
         </AuthProvider>

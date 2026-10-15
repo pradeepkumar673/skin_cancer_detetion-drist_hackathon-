@@ -741,7 +741,7 @@ function CaseDetailsContent({
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17252A]">
-                  Analysis report — {caseDoc.context?.category === "wound" ? "Wound & Ulcer" : caseDoc.context?.category === "rash" ? "Skin Condition" : "Skin Lesion"}
+                  Analysis report: {caseDoc.context?.category === "wound" ? "Wound & Ulcer" : caseDoc.context?.category === "rash" ? "Skin Condition" : "Skin Lesion"}
                 </h1>
                 <p className="text-xs sm:text-sm text-[#17252A]/75 mt-1">
                   Lesion Site: {caseDoc.bodySite.toUpperCase()} · Automated Segmentation &amp; Differential Classification
@@ -1080,8 +1080,8 @@ function CaseDetailsContent({
                     <dt className="text-[#17252A]/70">Likelihood (with range)</dt>
                     <dd className="font-mono font-semibold text-[#17252A]">
                       {analysis?.seniorCancer?.estimatedLikelihood
-                        ? `${(analysis.seniorCancer.estimatedLikelihood * 100).toFixed(0)}% (${(analysis.seniorCancer.likelihoodRange[0] * 100).toFixed(0)}–${(analysis.seniorCancer.likelihoodRange[1] * 100).toFixed(0)}%)`
-                        : "24% (12–41%)"}
+                        ? `${(analysis.seniorCancer.estimatedLikelihood * 100).toFixed(0)}% (${(analysis.seniorCancer.likelihoodRange[0] * 100).toFixed(0)} to ${(analysis.seniorCancer.likelihoodRange[1] * 100).toFixed(0)}%)`
+                        : "Not available"}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">

@@ -49,6 +49,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const HAS_SESSION_KEY = "skinsentry_has_session";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -57,23 +59,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await refreshSession();
       if (data?.user) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem(HAS_SESSION_KEY, "1");
+        }
         setUser({
           ...(data.user as unknown as UserProfile),
           verificationStatus: data.verificationStatus,
         });
       } else {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(HAS_SESSION_KEY);
+        }
         setUser(null);
       }
     } catch {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(HAS_SESSION_KEY);
+      }
       setUser(null);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Attempt silent refresh on initial mount
+  // Attempt silent refresh on initial mount only if session hint exists
   useEffect(() => {
     let mounted = true;
+    const hasSession =
+      typeof window !== "undefined" &&
+      localStorage.getItem(HAS_SESSION_KEY) === "1";
+
+    if (!hasSession) {
+      Promise.resolve().then(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+      return;
+    }
+
     refreshSession()
       .then((data) => {
         if (!mounted) return;
@@ -83,12 +107,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             verificationStatus: data.verificationStatus,
           });
         } else {
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(HAS_SESSION_KEY);
+          }
           setUser(null);
         }
         setIsLoading(false);
       })
       .catch(() => {
         if (!mounted) return;
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(HAS_SESSION_KEY);
+        }
         setUser(null);
         setIsLoading(false);
       });
@@ -109,6 +139,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     setAccessToken(data.accessToken);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(HAS_SESSION_KEY, "1");
+    }
     const profile = {
       ...data.user,
       verificationStatus: data.verificationStatus,
@@ -133,6 +166,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Ignore network errors on logout
     } finally {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(HAS_SESSION_KEY);
+      }
       setAccessToken(null);
       setUser(null);
       disconnectSocket();

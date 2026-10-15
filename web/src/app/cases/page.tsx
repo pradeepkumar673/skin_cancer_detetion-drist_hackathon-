@@ -16,7 +16,7 @@ import {
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { Spinner } from "@/components/ui/Spinner";
-import { apiClient, ApiError } from "@/lib/api";
+import { apiClient, ApiError, getAccessToken } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 interface AnalysisResult {
@@ -28,6 +28,30 @@ interface AnalysisResult {
     cancerProbability?: number;
     riskScore?: number;
     riskLevel?: string;
+  };
+  safety?: {
+    decision?: string;
+    reasons?: string[];
+  };
+  quality?: {
+    passed?: boolean;
+    reasons?: string[];
+  };
+  teams?: {
+    cancer?: {
+      senior?: {
+        band?: string;
+        urgency?: string;
+        likelihood?: {
+          point?: number;
+        };
+      };
+    };
+    ulcer?: {
+      senior?: {
+        trajectory?: string;
+      };
+    };
   };
 }
 
@@ -140,12 +164,17 @@ export default function MyCasesPage() {
         const getUrgencyWeight = (item: CaseItem) => {
           if (item.status === "failed") return 1;
           if (item.status === "queued" || item.status === "processing") return 2;
+          const res = item.analysisId?.result;
+          const cancerBand = res?.teams?.cancer?.senior?.band?.toLowerCase();
+          const ulcerTrajectory = res?.teams?.ulcer?.senior?.trajectory?.toLowerCase();
           const band =
-            item.analysisId?.result?.cancerRiskBand?.toLowerCase() ||
-            item.analysisId?.result?.predictions?.riskLevel?.toLowerCase() ||
+            cancerBand ||
+            res?.cancerRiskBand?.toLowerCase() ||
+            res?.riskTier?.toLowerCase() ||
+            res?.predictions?.riskLevel?.toLowerCase() ||
             "";
-          if (band.includes("high") || band.includes("severe")) return 5;
-          if (band.includes("moderate")) return 4;
+          if (band.includes("high") || band.includes("severe") || ulcerTrajectory === "deteriorating") return 5;
+          if (band.includes("moderate") || ulcerTrajectory === "stable") return 4;
           return 3;
         };
         return getUrgencyWeight(b) - getUrgencyWeight(a);
@@ -164,22 +193,27 @@ export default function MyCasesPage() {
       );
     }
 
-    if (c.status === "failed" || c.status === "abstained") {
+    const res = c.analysisId?.result;
+
+    if (c.status === "failed" || c.status === "abstained" || res?.safety?.decision === "abstain") {
+      const reason = res?.quality?.reasons?.[0]?.replace(/_/g, " ") || res?.safety?.reasons?.[0] || "withheld";
       return (
         <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[4px] font-mono text-[11px] uppercase tracking-wide bg-[#FBFAF7] text-[#5A6B69] border border-[#D8DDDB]">
-          <span>Withheld</span>
+          <span>Withheld ({reason})</span>
         </div>
       );
     }
 
-    const res = c.analysisId?.result;
+    const cancerBand = res?.teams?.cancer?.senior?.band?.toLowerCase();
+    const ulcerTrajectory = res?.teams?.ulcer?.senior?.trajectory?.toLowerCase();
     const band =
+      cancerBand ||
       res?.cancerRiskBand?.toLowerCase() ||
       res?.riskTier?.toLowerCase() ||
       res?.predictions?.riskLevel?.toLowerCase() ||
       "";
 
-    if (band.includes("high") || band.includes("severe")) {
+    if (band.includes("high") || band.includes("severe") || ulcerTrajectory === "deteriorating") {
       return (
         <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] font-mono text-[11px] uppercase tracking-wide bg-[#FDECEA] text-[#B42318] border border-[#B42318]/30 font-semibold">
           <span className="w-1.5 h-1.5 rounded-full bg-[#B42318] inline-block" />
@@ -188,7 +222,7 @@ export default function MyCasesPage() {
       );
     }
 
-    if (band.includes("moderate")) {
+    if (band.includes("moderate") || ulcerTrajectory === "stable") {
       return (
         <div className="inline-flex items-center px-2 py-0.5 rounded-[4px] font-mono text-[11px] uppercase tracking-wide bg-[#FFF9EB] text-[#8A5A00] border border-[#8A5A00]/30 font-medium">
           <span>Moderate</span>
@@ -233,7 +267,7 @@ export default function MyCasesPage() {
               </p>
             </div>
             <div className="hidden lg:flex items-center gap-2 font-mono text-[11px] text-[#5A6B69]">
-              <span>Node Sync: Active (0.14s)</span>
+              <span>CDSS Status: Operational</span>
             </div>
           </div>
         </div>
@@ -252,15 +286,17 @@ export default function MyCasesPage() {
               </div>
               <div className="flex items-center gap-3 text-xs">
                 <span>
-                  UHID:{" "}
+                  Patient ID:{" "}
                   <strong className="text-[#17252A] font-bold">
-                    {user?.id ? `ND-${user.id.slice(-5).toUpperCase()}-P` : "ND-80419-P"}
+                    {user?.id ? `#${user.id.slice(-6).toUpperCase()}` : "---"}
                   </strong>
                 </span>
                 <span className="text-[#D8DDDB]">•</span>
                 <span>
-                  Registered User:{" "}
-                  <strong className="text-[#17252A] font-medium">{user?.email || "Patient Profile"}</strong>
+                  User:{" "}
+                  <strong className="text-[#17252A] font-medium">
+                    {user?.name ? `${user.name} (${user.email})` : (user?.email || "Patient Profile")}
+                  </strong>
                 </span>
               </div>
             </div>
@@ -383,7 +419,7 @@ export default function MyCasesPage() {
                   </Link>
                 </div>
                 <div className="mt-4 pt-3 border-t border-[#D8DDDB] font-mono text-[11px] text-[#5A6B69] max-w-md mx-auto">
-                  Sample empty ledger state demonstration. Active clinical profiles toggle to empty upon case disposition or chart transfer.
+                  Cases submitted through New Screening will be indexed here with automated decision support telemetry.
                 </div>
               </div>
             ) : filteredCases.length === 0 ? (
@@ -418,13 +454,15 @@ export default function MyCasesPage() {
                     const isWound = isWoundCase(c);
                     const destUrl = isWound ? `/cases/${c._id}/wound` : `/cases/${c._id}`;
                     const rawImg = c.imagePaths && c.imagePaths.length > 0 ? c.imagePaths[0].path : null;
+                    const token = typeof window !== "undefined" ? getAccessToken() : null;
                     const imgUrl = rawImg
                       ? rawImg.startsWith("http")
                         ? rawImg
-                        : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}${rawImg}`
+                        : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/cases/${c._id}/image/0${token ? `?token=${encodeURIComponent(token)}` : ""}`
                       : null;
 
-                    const title = c.lesionLabel || `${c.bodySite.replace("_", " ")} observation`;
+                    const formattedSite = c.bodySite.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+                    const title = c.lesionLabel || `${formattedSite} observation`;
                     const categoryTag = isWound ? "Wound or ulcer" : "Skin lesion";
                     const dateFormatted = new Date(c.createdAt).toLocaleDateString("en-CA"); // YYYY-MM-DD
                     const caseShortId = c._id.slice(-4).toUpperCase();
@@ -476,13 +514,10 @@ export default function MyCasesPage() {
             {/* Ledger Footer / Pagination Status */}
             <div className="flex items-center justify-between px-2 py-3 text-[#5A6B69] font-mono text-[11px]">
               <div>
-                Showing {filteredCases.length} of {cases.length} indexed captures
+                Showing {filteredCases.length} of {cases.length} records
               </div>
-              <div className="flex items-center gap-1">
-                <span>
-                  Node Enclave:{" "}
-                  <strong className="text-[#17252A] font-normal">AIIMS-TeleDerm-04</strong>
-                </span>
+              <div className="flex items-center gap-1 font-mono text-[11px] text-[#5A6B69]">
+                <span>SkinSentry CDSS v1.0</span>
               </div>
             </div>
 

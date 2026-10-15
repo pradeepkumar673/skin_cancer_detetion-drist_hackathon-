@@ -6,14 +6,16 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 
 function bearerToken(req) {
   const header = req.headers.authorization;
-  if (!header || typeof header !== 'string') {
-    return null;
+  if (header && typeof header === 'string') {
+    const [scheme, token] = header.split(' ');
+    if (scheme === 'Bearer' && token) {
+      return token;
+    }
   }
-  const [scheme, token] = header.split(' ');
-  if (scheme !== 'Bearer' || !token) {
-    return null;
+  if (req.query?.token && typeof req.query.token === 'string') {
+    return req.query.token;
   }
-  return token;
+  return null;
 }
 
 export const requireAuth = asyncHandler(async (req, _res, next) => {

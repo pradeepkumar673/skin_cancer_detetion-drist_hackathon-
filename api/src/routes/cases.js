@@ -1,3 +1,4 @@
+import path from 'path';
 import express from 'express';
 import multer from 'multer';
 import axios from 'axios';
@@ -328,7 +329,17 @@ router.get(
       return res.status(404).json({ error: 'not_found', message: 'Case not found' });
     }
 
-    const filePath = await getCaseFilePath(caseDoc.patientId, caseDoc._id, req.params.imageId);
+    let targetImage = req.params.imageId;
+    if (targetImage === '0' || targetImage === 'current') {
+      const first = caseDoc.imagePaths?.[0];
+      if (first) {
+        targetImage = path.basename(first.path);
+      }
+    } else if (!targetImage.includes('.')) {
+      targetImage = `${targetImage}.jpg`;
+    }
+
+    const filePath = await getCaseFilePath(caseDoc.patientId, caseDoc._id, targetImage);
     if (!filePath) {
       return res.status(404).json({ error: 'not_found', message: 'Image file not found on disk' });
     }
