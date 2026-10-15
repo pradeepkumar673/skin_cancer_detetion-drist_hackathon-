@@ -558,6 +558,43 @@ router.post(
 );
 
 /**
+ * POST /cases/:id/retry (re-enqueue screening for a failed case)
+ */
+router.post(
+  '/:id/retry',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const caseDoc = await Case.findById(req.params.id);
+    if (!caseDoc) {
+      return res.status(404).json({ error: 'not_found', message: 'Case not found' });
+    }
+
+    const allowed = await canAccessCase(req.user, caseDoc);
+    if (!allowed) {
+      return res.status(404).json({ error: 'not_found', message: 'Case not found' });
+    }
+
+    caseDoc.status = 'queued';
+    await caseDoc.save();
+
+    analysisQueue.enqueue(caseDoc._id);
+
+    await writeAudit({
+      actorId: req.user._id,
+      action: 'CASE_RETRY_QUEUED',
+      entityType: 'Case',
+      entityId: caseDoc._id,
+      ip: clientIp(req),
+    });
+
+    return res.status(200).json({
+      success: true,
+      case: caseDoc,
+    });
+  })
+);
+
+/**
  * DELETE /cases/:id (owner only)
  */
 router.delete(

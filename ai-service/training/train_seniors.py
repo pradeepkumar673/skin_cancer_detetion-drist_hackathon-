@@ -165,11 +165,18 @@ def train_cancer_senior():
     base_gbm.fit(X_train, y_train)
 
     # 2. Isotonic calibration on validation split
-    calibrated_model = CalibratedClassifierCV(
-        estimator=base_gbm,
-        method="isotonic",
-        cv="prefit",
-    )
+    try:
+        from sklearn.frozen import FrozenEstimator
+        calibrated_model = CalibratedClassifierCV(
+            estimator=FrozenEstimator(base_gbm),
+            method="isotonic",
+        )
+    except ImportError:
+        calibrated_model = CalibratedClassifierCV(
+            estimator=base_gbm,
+            method="isotonic",
+            cv="prefit",
+        )
     calibrated_model.fit(X_val, y_val)
 
     # 3. Bootstrap ensemble for uncertainty range (10 bootstrap models)

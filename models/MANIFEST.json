@@ -250,20 +250,20 @@
     },
     {
       "path": "models/cancer/senior_model.joblib",
-      "size_bytes": 1139924,
-      "size_mb": 1.09,
-      "sha256": "aab42c01512011ea01ca75e5dace7e177ec19f64c5747b4267ea964505072ae5",
+      "size_bytes": 782772,
+      "size_mb": 0.75,
+      "sha256": "c183cc24822350974ad0b78ac78c59972a5ed73cf5a689895bd5b4539697b1f7",
       "description": "Cancer Senior calibrated gradient boosted risk estimator with bootstrap ensemble",
-      "updated_at": "2026-10-14T12:05:48.917705+00:00"
+      "updated_at": "2026-10-15T01:29:35.937068+00:00"
     },
     {
       "path": "models/metrics/cancer_senior.json",
       "size_bytes": 817,
       "size_mb": 0.0,
-      "sha256": "cd507a982682c9ffcfd4d2c1616c8345c69aa9087f8401c7c399f21d294450ab",
+      "sha256": "2e6186d46cf58cad1e7b29c45d6045235f25046b06cc2d637b68f9aea8673fe3",
       "description": "Cancer Senior test metrics, AUROC, AUPRC, and Brier score",
-      "updated_at": "2026-10-14T12:05:48.931713+00:00"
+      "updated_at": "2026-10-15T01:29:35.948076+00:00"
     }
   ],
-  "updated_at": "2026-10-14T12:05:48.931713+00:00"
+  "updated_at": "2026-10-15T01:29:35.948076+00:00"
 }

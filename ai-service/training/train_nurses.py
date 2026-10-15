@@ -109,7 +109,11 @@ def train_single_nurse(X_train, y_train, X_val, y_val, X_test, y_test, c_grid, t
     base_clf.fit(X_train, y_train)
 
     # Calibrate probabilities using validation set
-    calibrated_clf = CalibratedClassifierCV(estimator=base_clf, method="sigmoid", cv="prefit")
+    try:
+        from sklearn.frozen import FrozenEstimator
+        calibrated_clf = CalibratedClassifierCV(estimator=FrozenEstimator(base_clf), method="sigmoid")
+    except ImportError:
+        calibrated_clf = CalibratedClassifierCV(estimator=base_clf, method="sigmoid", cv="prefit")
     calibrated_clf.fit(X_val, y_val)
 
     # Choose decision threshold on validation set to hit target recall

@@ -113,10 +113,14 @@ def build_facts(
                 for lt in junior_a.get("likely_types", [])
             ],
             "abcde": {
-                "asymmetry": round(float(abcde.get("asymmetry", 0.0)), 4),
-                "border": round(float(abcde.get("border", 0.0)), 4),
-                "color_var": round(float(abcde.get("color_var", 0.0)), 4),
-                "diameter_mm": round(float(abcde.get("diameter_mm", 0.0)), 2),
+                "asymmetry": round(float(abcde.get("asymmetry") or 0.0), 4),
+                "border": round(float(abcde.get("border") or 0.0), 4),
+                "color_var": round(float(abcde.get("color") or abcde.get("color_var") or 0.0), 4),
+                "diameter_mm": (
+                    round(float(abcde["diameter_mm"]), 2)
+                    if abcde.get("diameter_mm") is not None
+                    else None
+                ),
                 "evolution": (
                     round(float(abcde["evolution"]), 4)
                     if abcde.get("evolution") is not None

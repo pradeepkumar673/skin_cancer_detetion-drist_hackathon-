@@ -11,6 +11,7 @@ import {
   Check,
   Info,
   Stethoscope,
+  RefreshCw,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/Header";
@@ -162,15 +163,16 @@ function CaseDetailsContent({
   const resolvedParams = use(params);
   const caseId = resolvedParams.id;
   const router = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [caseDoc, setCaseDoc] = useState<CaseDetails | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   // Live Analysis in Progress stopwatch
-  const [elapsedSeconds, setElapsedSeconds] = useState<number>(2.8);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0.0);
 
   // Layer toggles
   const [showMask, setShowMask] = useState(true);
@@ -413,6 +415,22 @@ function CaseDetailsContent({
     }
   };
 
+  const handleRetryScreening = async () => {
+    try {
+      setRetrying(true);
+      setError(null);
+      await apiClient(`/cases/${caseId}/retry`, { method: "POST" });
+      setElapsedSeconds(0.0);
+      await fetchCase();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      }
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   if (loading || authLoading) {
     return (
       <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
@@ -448,6 +466,88 @@ function CaseDetailsContent({
 
   const isDoctor = user?.role === "doctor" || user?.role === "admin";
   const currentPhoto = caseDoc.imagePaths.find((p) => p.kind === "current") || caseDoc.imagePaths[0];
+  const currentPhotoUrl = token
+    ? `http://localhost:5000/cases/${caseDoc._id}/image/0?token=${encodeURIComponent(token)}`
+    : `http://localhost:5000/cases/${caseDoc._id}/image/0`;
+
+  // ------------------------------------------------------------------------
+  // SCREEN: ANALYSIS FAILED
+  // ------------------------------------------------------------------------
+  if (caseDoc.status === "failed") {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#FBFAF7] text-[#17252A]">
+        <Header />
+
+        <main className="flex-1 w-full pt-14 pb-16">
+          <div className="w-full bg-[#E8F3F1] border-b border-[#17252A]/15 py-2 px-4 sm:px-6">
+            <div className="max-w-5xl mx-auto flex items-center gap-2 text-xs text-[#17252A]">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-[#2B7A78] text-[#FEFFFF] px-1.5 py-0.5 rounded-[2px]">
+                Protocol Advisory
+              </span>
+              <p className="font-medium text-[#17252A]/90">
+                Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis.
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full flex justify-center px-4 py-10">
+            <div className="w-full max-w-[640px] flex flex-col items-center">
+              <div className="w-full bg-[#FEFFFF] border border-[#B42318]/30 rounded-[4px] p-6 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-6 w-6 text-[#B42318] shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h1 className="text-lg font-bold text-[#17252A]">
+                      Screening analysis could not be completed
+                    </h1>
+                    <p className="text-xs text-[#17252A]/80 mt-1">
+                      The automated screening service encountered an interruption while analyzing this image.
+                      Your original photo and clinical record remain saved.
+                    </p>
+
+                    <div className="mt-4 p-3 bg-[#DEF2F1]/30 border border-[#17252A]/10 rounded-[4px] text-xs font-mono space-y-1 text-[#17252A]/80">
+                      <div>Case ID: #{caseDoc._id.slice(-6).toUpperCase()}</div>
+                      <div>Body site: {caseDoc.bodySite.toUpperCase()}</div>
+                      <div>Lesion label: {caseDoc.lesionLabel || "Unlabeled"}</div>
+                    </div>
+
+                    <div className="mt-6 flex flex-wrap items-center gap-3">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={handleRetryScreening}
+                        disabled={retrying}
+                        className="flex items-center gap-1.5"
+                      >
+                        {retrying ? (
+                          <Spinner className="h-3.5 w-3.5 text-[#17252A]" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                        <span>{retrying ? "Re-enqueueing..." : "Retry analysis"}</span>
+                      </Button>
+                      <Link href="/cases">
+                        <Button variant="secondary" size="sm" className="flex items-center gap-1.5">
+                          <ArrowLeft className="h-3.5 w-3.5" />
+                          <span>My Cases</span>
+                        </Button>
+                      </Link>
+                      <Link href="/cases/new">
+                        <Button variant="secondary" size="sm">
+                          Submit new photo
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <Footer />
+      </div>
+    );
+  }
 
   // ------------------------------------------------------------------------
   // SCREEN 6: ANALYSIS IN PROGRESS
@@ -460,35 +560,28 @@ function CaseDetailsContent({
         <main className="flex-1 w-full pt-14 pb-16">
           {/* Top Protocol Advisory */}
           <div className="w-full bg-[#E8F3F1] border-b border-[#17252A]/15 py-2 px-4 sm:px-6">
-            <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 text-xs text-[#17252A]">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-[#1B6B63] text-[#FEFFFF] px-1.5 py-0.5 rounded-[2px]">
-                  Protocol Advisory
-                </span>
-                <p className="font-medium text-[#17252A]/90">
-                  Decision support only. A low-risk result never proves there is no problem. A doctor makes the diagnosis.
-                </p>
-              </div>
-              <div className="hidden lg:flex items-center gap-3 font-mono text-[11px] text-[#2B7A78]">
-                <span>ICMR-TeleDerm Validated</span>
-                <span>|</span>
-                <span>Node Sync: Active (0.14s)</span>
-              </div>
+            <div className="max-w-5xl mx-auto flex items-center gap-2 text-xs text-[#17252A]">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-[#2B7A78] text-[#FEFFFF] px-1.5 py-0.5 rounded-[2px]">
+                Protocol Advisory
+              </span>
+              <p className="font-medium text-[#17252A]/90">
+                Decision support only. A normal or low-risk result never proves there is no problem. A doctor makes the diagnosis.
+              </p>
             </div>
           </div>
 
           <div className="w-full flex justify-center px-4 py-10">
             <div className="w-full max-w-[640px] flex flex-col items-center">
-              {/* CDSS Telemetry Breadcrumb */}
+              {/* Telemetry Header */}
               <div className="w-full flex items-center justify-between pb-3 border-b border-[#17252A]/15 mb-6">
                 <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[#1B6B63] animate-ping"></span>
+                  <span className="inline-block w-2 h-2 rounded-full bg-[#2B7A78] animate-pulse"></span>
                   <span className="font-mono text-xs text-[#2B7A78] uppercase tracking-wider font-semibold">
-                    CDSS TELEMETRY · SESSION #{caseDoc._id.slice(-8).toUpperCase()} · PIPELINE INGEST: ACTIVE
+                    SCREENING PIPELINE: {caseDoc.status.toUpperCase()}
                   </span>
                 </div>
-                <div className="font-mono text-xs text-[#17252A]/60 hidden sm:block">
-                  ENCLAVE: SECURE-TLS
+                <div className="font-mono text-xs text-[#17252A]/60">
+                  CASE #{caseDoc._id.slice(-6).toUpperCase()}
                 </div>
               </div>
 
@@ -505,11 +598,11 @@ function CaseDetailsContent({
               {/* Centered Dermoscopic Photo Thumbnail Container */}
               <div className="mb-6 flex flex-col items-center">
                 <div className="w-[120px] h-[120px] bg-[#FEFFFF] border border-[#17252A]/20 rounded-[4px] p-1 relative select-none shadow-sm">
-                  <div className="w-full h-full bg-[#F4EBE1] overflow-hidden rounded-[2px] relative flex items-center justify-center">
+                  <div className="w-full h-full bg-[#DEF2F1]/30 overflow-hidden rounded-[2px] relative flex items-center justify-center">
                     {currentPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={`http://localhost:5000/cases/${caseDoc._id}/image/0`}
+                        src={currentPhotoUrl}
                         alt="Clinical acquisition field"
                         className="w-full h-full object-cover"
                       />
@@ -518,161 +611,48 @@ function CaseDetailsContent({
                         SPECIMEN
                       </div>
                     )}
-                    {/* Graticule Overlay Lines */}
-                    <div className="absolute inset-0 pointer-events-none">
-                      <div className="absolute inset-x-0 top-1/2 h-[1px] border-b border-dashed border-[#00524B]/40"></div>
-                      <div className="absolute inset-y-0 left-1/2 w-[1px] border-r border-dashed border-[#00524B]/40"></div>
-                    </div>
                   </div>
                 </div>
                 <div className="mt-1.5 font-mono text-[10px] text-[#2B7A78] uppercase tracking-tight font-semibold">
-                  {caseDoc.lesionLabel || "DERM-ACQ-01"} · {caseDoc.bodySite.toUpperCase()}
+                  {caseDoc.lesionLabel || "LESION"} : {caseDoc.bodySite.toUpperCase()}
                 </div>
               </div>
 
-              {/* Vertical Pipeline Status Ledger */}
+              {/* Clean Clinical Pipeline Progress Card */}
               <div className="w-full bg-[#FEFFFF] border border-[#17252A]/15 rounded-[4px] shadow-sm overflow-hidden">
-                {/* Ledger Header */}
-                <div className="w-full bg-[#DEF2F1]/60 px-4 py-2 border-b border-[#17252A]/15 flex items-center justify-between text-[#17252A]/80 font-mono text-xs tracking-wider font-semibold">
-                  <div className="flex items-center gap-4">
-                    <span className="w-4 inline-block text-center">#</span>
-                    <span className="w-40 sm:w-48 text-left">STAGE</span>
-                  </div>
-                  <span className="w-24 text-left">STATUS</span>
-                  <span className="w-16 text-right">ELAPSED</span>
+                <div className="w-full bg-[#DEF2F1]/60 px-4 py-2.5 border-b border-[#17252A]/15 flex items-center justify-between text-[#17252A]/80 font-mono text-xs tracking-wider font-semibold">
+                  <span>PIPELINE EXECUTION</span>
+                  <span className="text-[#2B7A78]">{elapsedSeconds.toFixed(1)} s</span>
                 </div>
 
-                {/* Ledger Rows */}
-                <div className="w-full flex flex-col divide-y divide-[#17252A]/10 text-xs">
-                  {/* Stage 1: Quality Check */}
-                  <div className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-[#DEF2F1]/20 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <span className="w-4 flex items-center justify-center text-[#1B6B63]">
-                        <Check className="h-4 w-4" />
-                      </span>
-                      <span className="w-40 sm:w-48 font-semibold text-[#17252A]">Quality check</span>
-                    </div>
-                    <div className="w-24">
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#DEF2F1] border border-[#1B6B63]/20 uppercase">
-                        completed
-                      </span>
-                    </div>
-                    <div className="w-16 text-right font-mono text-[#17252A]">1.2 s</div>
+                <div className="p-4 space-y-3 text-xs">
+                  <div className="flex items-center justify-between py-1.5 border-b border-[#17252A]/10">
+                    <span className="text-[#17252A] font-medium">1. Image Quality & Nurse Domain Triage</span>
+                    <span className="font-mono text-[11px] text-[#2B7A78] font-semibold">ACTIVE</span>
                   </div>
-
-                  {/* Stage 2: Nurse Gate */}
-                  <div className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-[#DEF2F1]/20 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <span className="w-4 flex items-center justify-center text-[#1B6B63]">
-                        <Check className="h-4 w-4" />
-                      </span>
-                      <span className="w-40 sm:w-48 font-semibold text-[#17252A]">Nurse gate</span>
-                    </div>
-                    <div className="w-24">
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#DEF2F1] border border-[#1B6B63]/20 uppercase">
-                        completed
-                      </span>
-                    </div>
-                    <div className="w-16 text-right font-mono text-[#17252A]">0.4 s</div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-[#17252A]/10">
+                    <span className="text-[#17252A] font-medium">2. Specialist Analysis & Segmentation</span>
+                    <span className="font-mono text-[11px] text-[#2B7A78] font-semibold">ACTIVE</span>
                   </div>
-
-                  {/* Stage 3: Cancer / Target Specialist Team */}
-                  <div className="w-full px-4 py-2.5 flex items-center justify-between bg-[#DEF2F1]/30">
-                    <div className="flex items-center gap-4">
-                      <span className="w-4 flex items-center justify-center">
-                        <span className="w-2 h-2 rounded-full bg-[#1B6B63] inline-block animate-ping"></span>
-                      </span>
-                      <span className="w-40 sm:w-48 font-bold text-[#17252A] flex items-center gap-1.5">
-                        <span>Cancer team</span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63]"></span>
-                      </span>
-                    </div>
-                    <div className="w-24">
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold text-[#1B6B63] bg-[#FEFFFF] border border-[#1B6B63] uppercase">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63] animate-pulse"></span>
-                        running
-                      </span>
-                    </div>
-                    <div className="w-16 text-right font-mono text-[#2B7A78] font-semibold">
-                      {elapsedSeconds} s
-                    </div>
-                  </div>
-
-                  {/* Stage 4: Ulcer Team */}
-                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
-                    <div className="flex items-center gap-4">
-                      <span className="w-4 flex items-center justify-center">
-                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
-                      </span>
-                      <span className="w-40 sm:w-48 text-[#17252A]/80">Ulcer team</span>
-                    </div>
-                    <div className="w-24">
-                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
-                    </div>
-                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
-                  </div>
-
-                  {/* Stage 5: Skin Disease Team */}
-                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
-                    <div className="flex items-center gap-4">
-                      <span className="w-4 flex items-center justify-center">
-                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
-                      </span>
-                      <span className="w-40 sm:w-48 text-[#17252A]/80">Skin disease team</span>
-                    </div>
-                    <div className="w-24">
-                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
-                    </div>
-                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
-                  </div>
-
-                  {/* Stage 6: Safety Layer */}
-                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
-                    <div className="flex items-center gap-4">
-                      <span className="w-4 flex items-center justify-center">
-                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
-                      </span>
-                      <span className="w-40 sm:w-48 text-[#17252A]/80">Safety layer</span>
-                    </div>
-                    <div className="w-24">
-                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
-                    </div>
-                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
-                  </div>
-
-                  {/* Stage 7: Explanation */}
-                  <div className="w-full px-4 py-2.5 flex items-center justify-between opacity-60">
-                    <div className="flex items-center gap-4">
-                      <span className="w-4 flex items-center justify-center">
-                        <span className="w-2 h-2 rounded-full border border-[#17252A]/40 inline-block"></span>
-                      </span>
-                      <span className="w-40 sm:w-48 text-[#17252A]/80">Explanation</span>
-                    </div>
-                    <div className="w-24">
-                      <span className="text-[10px] font-mono text-[#17252A]/60 uppercase">queued</span>
-                    </div>
-                    <div className="w-16 text-right font-mono text-[#17252A]/60">—</div>
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-[#17252A] font-medium">3. Multi-Model Safety Consensus & Report</span>
+                    <span className="font-mono text-[11px] text-[#17252A]/60">PENDING</span>
                   </div>
                 </div>
 
-                {/* Ledger Footer */}
-                <div className="bg-[#DEF2F1]/60 px-4 py-2 border-t border-[#17252A]/15 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] font-mono text-[#17252A]/70">
+                <div className="bg-[#DEF2F1]/30 px-4 py-2 border-t border-[#17252A]/15 flex items-center justify-between text-[11px] font-mono text-[#17252A]/70">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#1B6B63] inline-block"></span>
-                    <span>WebSocket: Connected (Node AIIMS-D-04)</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#2B7A78] inline-block animate-pulse"></span>
+                    <span>Live status updates active</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span>Latency: 24ms</span>
-                    <span>•</span>
-                    <span>Packet Integrity: 100%</span>
-                  </div>
+                  <span>15 to 30s estimated</span>
                 </div>
               </div>
 
               {/* Informative Sub-note */}
               <div className="w-full mt-4 px-1 flex items-start gap-2 text-xs text-[#17252A]/70">
                 <Info className="h-4 w-4 shrink-0 mt-0.5 text-[#2B7A78]" />
-                <p>You will get a report when every applicable team has finished.</p>
+                <p>You will get a comprehensive clinical report once processing completes.</p>
               </div>
 
               {/* Action Panel */}
@@ -682,11 +662,8 @@ function CaseDetailsContent({
                   onClick={() => router.push("/cases")}
                   className="px-4 py-1.5 rounded-[4px] border border-[#17252A]/20 bg-[#FEFFFF] text-xs font-semibold text-[#17252A]/80 hover:text-[#B42318] hover:border-[#B42318] transition-colors"
                 >
-                  Cancel analysis
+                  Cancel and return to My Cases
                 </button>
-                <span className="font-mono text-[10px] text-[#17252A]/50">
-                  Aborting invalidates current session token #{caseDoc._id.slice(-8).toUpperCase()}
-                </span>
               </div>
             </div>
           </div>
@@ -715,11 +692,6 @@ function CaseDetailsContent({
               <p className="font-medium text-[#17252A]/90">
                 Decision support only. A low-risk result never proves there is no problem. A doctor makes the diagnosis.
               </p>
-            </div>
-            <div className="hidden lg:flex items-center gap-3 font-mono text-[11px] text-[#2B7A78]">
-              <span>ICMR-TeleDerm Validated</span>
-              <span>|</span>
-              <span>Node Sync: Active (0.14s)</span>
             </div>
           </div>
         </div>
@@ -841,7 +813,7 @@ function CaseDetailsContent({
                   {currentPhoto ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={`http://localhost:5000/cases/${caseDoc._id}/image/0`}
+                      src={currentPhotoUrl}
                       alt="Submitted clinical lesion"
                       className="w-full h-full object-contain"
                     />
@@ -854,7 +826,7 @@ function CaseDetailsContent({
                     <div className="absolute inset-0 pointer-events-none transition-opacity duration-150 opacity-80 mix-blend-screen">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={`http://localhost:5000/cases/${caseDoc._id}/artifact/heatmap.png`}
+                        src={`http://localhost:5000/cases/${caseDoc._id}/artifact/heatmap.png${token ? `?token=${encodeURIComponent(token)}` : ""}`}
                         alt="Grad-CAM activation heatmap"
                         className="w-full h-full object-contain"
                         onError={(e) => {
@@ -869,7 +841,7 @@ function CaseDetailsContent({
                     <div className="absolute inset-0 pointer-events-none transition-opacity duration-150 opacity-90">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={`http://localhost:5000/cases/${caseDoc._id}/artifact/mask.png`}
+                        src={`http://localhost:5000/cases/${caseDoc._id}/artifact/cancer_mask.png${token ? `?token=${encodeURIComponent(token)}` : ""}`}
                         alt="MedSAM boundary contour"
                         className="w-full h-full object-contain mix-blend-screen"
                         onError={(e) => {

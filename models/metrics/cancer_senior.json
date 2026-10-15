@@ -1,6 +1,6 @@
 {
   "model_name": "Cancer Senior (Calibrated Risk Estimator with Bootstrap Uncertainty)",
-  "evaluated_at": "2026-10-14T12:05:48.904664+00:00",
+  "evaluated_at": "2026-10-15T01:29:35.921883+00:00",
   "test_metrics": {
     "auroc": 1.0,
     "auprc": 1.0,
