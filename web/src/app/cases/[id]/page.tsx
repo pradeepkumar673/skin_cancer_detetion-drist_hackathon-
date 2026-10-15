@@ -1902,7 +1902,7 @@ function CaseDetailsContent({
                   {/* Nested Sub-Boxes ("Boxes Inside Boxes") */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
                     {/* SUB-BOX 1: CANCER PROBABILITY & DIAGNOSTIC CHANCE */}
-                    <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
+                    <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-5 flex flex-col justify-between shadow-sm">
                       <div>
                         <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
                           <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
@@ -1912,16 +1912,16 @@ function CaseDetailsContent({
                           <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">Senior Ensemble</span>
                         </div>
 
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-4 space-y-3.5">
                           {/* Main Likelihood Metric */}
-                          <div className="p-3 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[4px] flex items-center justify-between">
+                          <div className="p-3.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[4px] flex items-center justify-between">
                             <div>
                               <div className="text-[11px] font-medium text-[#17252A]/75">Estimated Malignancy Likelihood</div>
-                              <div className="text-xl font-bold font-mono text-[#17252A] mt-0.5">
+                              <div className="text-2xl font-bold font-mono text-[#17252A] mt-0.5">
                                 {likelihoodText}
                               </div>
                             </div>
-                            <div className={`px-2.5 py-1 rounded-[2px] font-mono text-[11px] font-bold uppercase ${
+                            <div className={`px-3 py-1.5 rounded-[2px] font-mono text-xs font-bold uppercase ${
                               likelihoodVal != null && likelihoodVal > 0.4
                                 ? "bg-[#D92D20]/10 text-[#D92D20] border border-[#D92D20]/30"
                                 : likelihoodVal != null && likelihoodVal > 0.15
@@ -1932,31 +1932,62 @@ function CaseDetailsContent({
                             </div>
                           </div>
 
-                          {/* Differential Chances Bar List */}
-                          <div className="space-y-1.5">
-                            <div className="text-[11px] font-semibold text-[#17252A]/80">Differential Diagnostic Breakdown:</div>
-                            {displayTypes.map((dt, idx) => (
-                              <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
-                                <span className="text-[#17252A] font-medium truncate max-w-[210px]">{dt.name}</span>
-                                <span className="font-mono font-bold text-[#2B7A78]">{dt.pct}% chance</span>
-                              </div>
-                            ))}
+                          {/* Consensus Model Telemetry */}
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="p-2.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <div className="text-[10px] text-[#17252A]/70 uppercase font-mono">Model Agreement</div>
+                              <div className="font-mono font-bold text-[#17252A] mt-0.5">{agreementText}</div>
+                            </div>
+                            <div className="p-2.5 bg-[#FEFFFF] border border-[#17252A]/10 rounded-[2px]">
+                              <div className="text-[10px] text-[#17252A]/70 uppercase font-mono">Out-of-distribution</div>
+                              <div className="font-mono font-bold text-[#17252A] mt-0.5">{oodText}</div>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-3 pt-2 border-t border-[#17252A]/10 text-[10px] font-mono text-[#17252A]/60">
+                      <div className="mt-4 pt-2 border-t border-[#17252A]/10 text-[10px] font-mono text-[#17252A]/60">
                         Calibration: Beta-binomial smoothed · In-distribution: Yes
                       </div>
                     </div>
 
-                    {/* SUB-BOX 2: IDENTIFIED SYMPTOMS & MORPHOLOGICAL SEVERITY */}
+                    {/* SUB-BOX 2: LIKELY TYPES (TOP 3) - USER REQUESTED INSIDE CLINICAL ASSESSMENT */}
+                    <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-5 flex flex-col justify-between shadow-sm">
+                      <div>
+                        <div className="mb-3">
+                          <h3 className="text-base font-bold text-[#17252A]">Likely types (top 3)</h3>
+                          <p className="text-xs text-[#17252A]/70 mt-0.5">
+                            The cancer classifier is a 7-class model. These are the three it ranked highest for this scan.
+                          </p>
+                        </div>
+
+                        <div className="space-y-3.5 mt-2">
+                          {displayTypes.map((dt, idx) => (
+                            <div key={idx}>
+                              <div className="flex justify-between items-baseline mb-1 text-xs">
+                                <span className="font-semibold text-[#17252A]">{dt.name}</span>
+                                <span className="font-mono font-bold text-[#17252A]">{dt.pct}%</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-[#DEF2F1] rounded-[2px] overflow-hidden">
+                                <div className="h-full bg-[#1B6B63]" style={{ width: `${Math.min(100, Math.max(3, dt.pct))}%` }}></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] font-mono text-[#17252A]/60 mt-4 pt-2 border-t border-[#17252A]/10">
+                        This model misses most melanomas on held-out dermoscopy data. Never rely on it alone.
+                      </p>
+                    </div>
+
+                    {/* SUB-BOX 3: IDENTIFIED SYMPTOMS & MORPHOLOGICAL SEVERITY */}
                     <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
                           <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
                             <Activity className="h-4 w-4 text-[#2B7A78]" />
-                            <span>2. Identified Symptoms &amp; Morphological Severity</span>
+                            <span>3. Identified Symptoms &amp; Morphological Severity</span>
                           </div>
                           <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">ABCDE &amp; Morphometry</span>
                         </div>
@@ -2005,13 +2036,13 @@ function CaseDetailsContent({
                       </div>
                     </div>
 
-                    {/* SUB-BOX 3: URGENCY TIMELINE: HOW FAST TO VISIT A DOCTOR */}
+                    {/* SUB-BOX 4: URGENCY TIMELINE: HOW FAST TO VISIT A DOCTOR */}
                     <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
                           <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
                             <Clock className="h-4 w-4 text-[#2B7A78]" />
-                            <span>3. How Fast to Visit a Doctor</span>
+                            <span>4. How Fast to Visit a Doctor</span>
                           </div>
                           <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">Triage Window</span>
                         </div>
@@ -2056,13 +2087,13 @@ function CaseDetailsContent({
                       </div>
                     </div>
 
-                    {/* SUB-BOX 4: CLINICAL MEASURES (WHAT TO DO & WHAT NOT TO DO) */}
+                    {/* SUB-BOX 5: CLINICAL MEASURES (WHAT TO DO & WHAT NOT TO DO) */}
                     <div className="bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4 flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between pb-2 border-b border-[#17252A]/10">
                           <div className="flex items-center gap-1.5 font-bold text-xs text-[#17252A]">
                             <CheckCircle2 className="h-4 w-4 text-[#2B7A78]" />
-                            <span>4. Clinical Measures &amp; Safety Protocol</span>
+                            <span>5. Clinical Measures &amp; Safety Protocol</span>
                           </div>
                           <span className="font-mono text-[10px] text-[#17252A]/60 uppercase">Patient Instructions</span>
                         </div>
@@ -2104,13 +2135,13 @@ function CaseDetailsContent({
                     </div>
                   </div>
 
-                  {/* SUB-BOX 5: FULL-WIDTH GROQ AI CLINICAL EXPLANATION BOX */}
+                  {/* SUB-BOX 6: FULL-WIDTH GROQ AI CLINICAL EXPLANATION BOX */}
                   <div className="mt-5 bg-[#FBFAF7] border border-[#17252A]/15 rounded-[4px] p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#17252A]/10 gap-2">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-[#2B7A78]" />
                         <h3 className="text-xs font-bold text-[#17252A]">
-                          5. Plain-Language Explanation (Groq Clinical LLM)
+                          6. Plain-Language Explanation (Groq Clinical LLM)
                         </h3>
                       </div>
 
