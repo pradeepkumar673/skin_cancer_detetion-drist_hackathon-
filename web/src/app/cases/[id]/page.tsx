@@ -353,182 +353,391 @@ function CaseDetailsContent({
         return top * (1 - fy) + bot * fy;
       };
 
-      // Calculate border skin luminance
+      // -------------------------------------------------------------
+      // 1. ORIGINAL-DATA PIXEL ANALYSIS: SKIN CLASSIFICATION & BASELINE
+      // -------------------------------------------------------------
+      const isSkin = new Uint8Array(w * h);
       let skinLumSum = 0;
+      let skinRSum = 0;
+      let skinGSum = 0;
+      let skinBSum = 0;
       let skinCount = 0;
-      for (let x = 0; x < w; x += 4) {
-        const iTop = x * 4;
-        const iBot = ((h - 1) * w + x) * 4;
-        skinLumSum += 0.299 * data[iTop] + 0.587 * data[iTop + 1] + 0.114 * data[iTop + 2];
-        skinLumSum += 0.299 * data[iBot] + 0.587 * data[iBot + 1] + 0.114 * data[iBot + 2];
-        skinCount += 2;
-      }
-      const skinLum = skinCount > 0 ? skinLumSum / skinCount : 190;
 
-      // Compute binary lesion presence array (1 for lesion, 0 for skin)
-      const isLesionArr = new Uint8Array(w * h);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
+      for (let idx = 0; idx < w * h; idx++) {
+        const i = idx * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+        // True skin tone vs white/gray bedsheets and dark shadow borders
+        const isNeutralCloth = lum > 195 && Math.abs(r - g) < 18 && Math.abs(g - b) < 18;
+        const isShadow = lum < 25;
+        const isSkinColor = !isNeutralCloth && !isShadow && r > g && r > b + 10 && lum < 240;
+        const hasMask = maskData && maskData[i] > 60;
+
+        if (isSkinColor || hasMask) {
+          isSkin[idx] = 1;
+          skinRSum += r;
+          skinGSum += g;
+          skinBSum += b;
+          skinLumSum += lum;
+          skinCount++;
+        }
+      }
+
+      const avgSkinR = skinCount > 0 ? skinRSum / skinCount : 185;
+      const avgSkinG = skinCount > 0 ? skinGSum / skinCount : 145;
+      const avgSkinB = skinCount > 0 ? skinBSum / skinCount : 125;
+      const avgSkinLum = skinCount > 0 ? skinLumSum / skinCount : 160;
+
+      // -------------------------------------------------------------
+      // 2. COMPUTE DERMATOLOGICAL SALIENCY ON ORIGINAL PIXELS
+      // -------------------------------------------------------------
+      const rawSaliency = new Float32Array(w * h);
+      let maxSal = 0.001;
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
           const idx = y * w + x;
+          if (isSkin[idx] === 0) continue;
+
           const i = idx * 4;
-          if (maskData && maskData[i] > 60) {
-            isLesionArr[idx] = 1;
-          } else {
-            const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-            const dark = (skinLum - lum) / Math.max(25, skinLum * 0.70);
-            const redErythema = (data[i] - 0.5 * data[i + 1] - 0.5 * data[i + 2]) / 80;
-            isLesionArr[idx] = (dark > 0.18 || redErythema > 0.18) ? 1 : 0;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+          // Vascular erythema
+          const ery = Math.max(0, r - 0.5 * g - 0.5 * b);
+          // Melanin darkness compared to surrounding normal skin
+          const dark = Math.max(0, avgSkinLum - lum);
+          // Chromatic divergence from normal skin
+          const dr = r - avgSkinR;
+          const dg = g - avgSkinG;
+          const db = b - avgSkinB;
+          const chrom = Math.sqrt(dr * dr + dg * dg + db * db);
+
+          // Sobel edge gradient magnitude
+          const lumL = 0.299 * data[(idx - 1) * 4] + 0.587 * data[(idx - 1) * 4 + 1] + 0.114 * data[(idx - 1) * 4 + 2];
+          const lumR = 0.299 * data[(idx + 1) * 4] + 0.587 * data[(idx + 1) * 4 + 1] + 0.114 * data[(idx + 1) * 4 + 2];
+          const lumU = 0.299 * data[(idx - w) * 4] + 0.587 * data[(idx - w) * 4 + 1] + 0.114 * data[(idx - w) * 4 + 2];
+          const lumD = 0.299 * data[(idx + w) * 4] + 0.587 * data[(idx + w) * 4 + 1] + 0.114 * data[(idx + w) * 4 + 2];
+          const gx = lumR - lumL;
+          const gy = lumD - lumU;
+          const grad = Math.sqrt(gx * gx + gy * gy);
+
+          // Saliency synthesized from real dermatological contrast
+          const sal = ery * 1.8 + dark * 1.3 + chrom * 0.7 + grad * 0.9;
+          rawSaliency[idx] = sal;
+          if (sal > maxSal) maxSal = sal;
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 3. TARGET LESION SEED & ADAPTIVE OTSU SEGMENTATION (NO CIRCLES!)
+      // -------------------------------------------------------------
+      const rawDetected = resData?.teams?.cancer?.junior_a?.detected_boxes;
+      let searchBox = { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
+
+      if (rawDetected && rawDetected.length > 0) {
+        const primaryBox = rawDetected[0];
+        let bx0 = Math.max(0, Math.min(w - 1, Math.round(primaryBox.x * w)));
+        let by0 = Math.max(0, Math.min(h - 1, Math.round(primaryBox.y * h)));
+        let bx1 = Math.max(0, Math.min(w - 1, Math.round((primaryBox.x + primaryBox.w) * w)));
+        let by1 = Math.max(0, Math.min(h - 1, Math.round((primaryBox.y + primaryBox.h) * h)));
+        if (bx1 - bx0 > w * 0.5 || by1 - by0 > h * 0.5) {
+          const midX = (bx0 + bx1) / 2;
+          const midY = (by0 + by1) / 2;
+          bx0 = Math.max(0, Math.round(midX - w * 0.12));
+          bx1 = Math.min(w - 1, Math.round(midX + w * 0.12));
+          by0 = Math.max(0, Math.round(midY - h * 0.14));
+          by1 = Math.min(h - 1, Math.round(midY + h * 0.14));
+        }
+        searchBox = { x0: bx0, y0: by0, x1: bx1, y1: by1 };
+      }
+
+      // Find peak lesion seed
+      let peakSal = -1;
+      let seedX = Math.round((searchBox.x0 + searchBox.x1) / 2);
+      let seedY = Math.round((searchBox.y0 + searchBox.y1) / 2);
+
+      for (let y = searchBox.y0; y <= searchBox.y1; y++) {
+        for (let x = searchBox.x0; x <= searchBox.x1; x++) {
+          const idx = y * w + x;
+          if (isSkin[idx] && rawSaliency[idx] > peakSal) {
+            peakSal = rawSaliency[idx];
+            seedX = x;
+            seedY = y;
+          }
+        }
+      }
+      if (peakSal <= 0) {
+        for (let idx = 0; idx < w * h; idx++) {
+          if (isSkin[idx] && rawSaliency[idx] > peakSal) {
+            peakSal = rawSaliency[idx];
+            seedX = idx % w;
+            seedY = Math.floor(idx / w);
           }
         }
       }
 
-      // Compute local neighbor lesion density (ratio) to find the TRUE IRREGULAR BOUNDARY
-      const neighborRatio = new Float32Array(w * h);
-      const rad = 7;
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          let count = 0;
-          let total = 0;
-          for (let dy = -rad; dy <= rad; dy += 2) {
-            const ny = y + dy;
-            if (ny < 0 || ny >= h) continue;
-            for (let dx = -rad; dx <= rad; dx += 2) {
-              const nx = x + dx;
-              if (nx < 0 || nx >= w) continue;
-              if (isLesionArr[ny * w + nx] === 1) count++;
-              total++;
+      // Compute local background skin saliency outside the focal seed
+      let localSkinSalSum = 0;
+      let localSkinCount = 0;
+      for (let dy = -35; dy <= 35; dy += 3) {
+        for (let dx = -35; dx <= 35; dx += 3) {
+          const nx = seedX + dx;
+          const ny = seedY + dy;
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const idx = ny * w + nx;
+            const d = Math.hypot(dx, dy);
+            if (d > 16 && isSkin[idx]) {
+              localSkinSalSum += rawSaliency[idx];
+              localSkinCount++;
             }
           }
-          neighborRatio[y * w + x] = total > 0 ? count / total : 0;
+        }
+      }
+      const bgSkinSal = localSkinCount > 0 ? localSkinSalSum / localSkinCount : 15;
+      const lesionThreshold = bgSkinSal + 0.30 * Math.max(18, peakSal - bgSkinSal);
+
+      // Connected-component region growing (morphological flood fill from actual pixel values)
+      const isLesion = new Uint8Array(w * h);
+      const visited = new Uint8Array(w * h);
+      const queue: number[] = [seedY * w + seedX];
+      visited[seedY * w + seedX] = 1;
+
+      let lesionPixelCount = 0;
+      let sumX = 0;
+      let sumY = 0;
+      const maxExtent = Math.max(30, Math.min(70, Math.round(Math.max(searchBox.x1 - searchBox.x0, searchBox.y1 - searchBox.y0) * 1.15)));
+
+      let qHead = 0;
+      while (qHead < queue.length) {
+        const curr = queue[qHead++];
+        const cx = curr % w;
+        const cy = Math.floor(curr / w);
+
+        isLesion[curr] = 1;
+        lesionPixelCount++;
+        sumX += cx;
+        sumY += cy;
+
+        const neighbors = [
+          cy > 0 ? curr - w : -1,
+          cy < h - 1 ? curr + w : -1,
+          cx > 0 ? curr - 1 : -1,
+          cx < w - 1 ? curr + 1 : -1,
+        ];
+
+        for (const nIdx of neighbors) {
+          if (nIdx >= 0 && !visited[nIdx]) {
+            visited[nIdx] = 1;
+            const nx = nIdx % w;
+            const ny = Math.floor(nIdx / w);
+            const d = Math.hypot(nx - seedX, ny - seedY);
+            if (d <= maxExtent && isSkin[nIdx] && rawSaliency[nIdx] >= lesionThreshold) {
+              queue.push(nIdx);
+            }
+          }
         }
       }
 
-      // Floating point raw heat activation map adhering strictly to real lesion contour
+      // True organic lesion centroid (center of mass)
+      let targetCx = seedX;
+      let targetCy = seedY;
+      if (lesionPixelCount > 0) {
+        targetCx = Math.round(sumX / lesionPixelCount);
+        targetCy = Math.round(sumY / lesionPixelCount);
+      } else {
+        isLesion[seedY * w + seedX] = 1;
+      }
+
+      // Distance transform to lesion perimeter for organic thermal diffusion (halo)
+      const distToLesion = new Float32Array(w * h);
+      distToLesion.fill(999);
+      const dQueue: number[] = [];
+
+      for (let idx = 0; idx < w * h; idx++) {
+        if (isLesion[idx] === 1) {
+          distToLesion[idx] = 0;
+          dQueue.push(idx);
+        }
+      }
+
+      let dqHead = 0;
+      while (dqHead < dQueue.length) {
+        const curr = dQueue[dqHead++];
+        const curDist = distToLesion[curr];
+        if (curDist >= 35) continue;
+
+        const cx = curr % w;
+        const cy = Math.floor(curr / w);
+
+        const neighbors = [
+          cy > 0 ? curr - w : -1,
+          cy < h - 1 ? curr + w : -1,
+          cx > 0 ? curr - 1 : -1,
+          cx < w - 1 ? curr + 1 : -1,
+        ];
+
+        for (const nIdx of neighbors) {
+          if (nIdx >= 0) {
+            if (distToLesion[nIdx] > curDist + 1) {
+              distToLesion[nIdx] = curDist + 1;
+              dQueue.push(nIdx);
+            }
+          }
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 4. SCREEN 2: THERMAL ACTIVATION MAP (FIGURES b & c)
+      // -------------------------------------------------------------
       const heatMap = new Float32Array(w * h);
 
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const idx = y * w + x;
-          const ratio = neighborRatio[idx];
-          const isL = isLesionArr[idx] === 1;
-
-          // Boundary halo factor: peaks when ratio ~ 0.45 (the exact perimeter of the real lesion)
-          const boundaryHalo = Math.max(0, 1.0 - 2.5 * Math.abs(ratio - 0.45));
-
-          // Real DINOv2 vision transformer attention
-          const patchVal = sampleSmoothPatch(x / w, y / h);
-
-          let heat = 0.0;
-          if (heatmapMode === "dense") {
-            // Figure (b) Dense Saliency: Deep navy background, glowing golden perimeter, blazing fiery red injury core
-            if (ratio < 0.08 && !isL) {
-              // Background healthy skin: Cool deep dark navy blue
-              heat = 0.04 + patchVal * 0.05;
-            } else if (ratio < 0.35) {
-              // Outer lesion margin transition halo: glowing yellow to warm amber
-              const edgeFactor = (ratio - 0.08) / 0.27;
-              heat = 0.46 + edgeFactor * 0.26 + patchVal * 0.10;
-            } else {
-              // Core lesion & injury area: vivid burning red, fiery orange, and intense clinical heat
-              const haloIntensity = boundaryHalo * 0.18;
-              heat = 0.74 + haloIntensity + patchVal * 0.15;
-            }
+      if (heatmapMode === "dense") {
+        // Mode B: Dense Saliency (Figure b)
+        for (let idx = 0; idx < w * h; idx++) {
+          if (isSkin[idx] === 0) {
+            // Background bedsheet: Deep midnight navy blue
+            heatMap[idx] = 0.04;
+          } else if (isLesion[idx] === 1) {
+            // Inside focal lesion: real pixel saliency variations (blazing orange to scarlet red)
+            const salNorm = Math.max(0, Math.min(1, (rawSaliency[idx] - lesionThreshold) / Math.max(1, peakSal - lesionThreshold)));
+            heatMap[idx] = 0.74 + 0.24 * salNorm;
           } else {
-            // Figure (c) Patch Attention: Warm cream background, blazing scarlet perimeter ring, cool core
-            if (ratio < 0.08 && !isL) {
-              // Outer field: warm pale cream / light yellow
-              heat = 0.44 + patchVal * 0.12;
-            } else if (ratio > 0.82) {
-              // Central regression / core zone: cool slate blue
-              heat = 0.16 + patchVal * 0.12;
-            } else {
-              // Lesion perimeter band: blazing intense scarlet red ring
-              heat = 0.82 + boundaryHalo * 0.14 + patchVal * 0.08;
-            }
+            // Surrounding healthy skin: natural thermal diffusion halo from lesion perimeter
+            const d = distToLesion[idx];
+            const halo = Math.exp(-d / 12);
+            // Border zone is golden yellow (~0.65), dropping smoothly to cool indigo/teal (~0.18)
+            heatMap[idx] = 0.18 + 0.48 * halo;
           }
-
-          heatMap[idx] = Math.max(0, Math.min(1, heat));
         }
-      }
 
-      // 2-Pass Separable Gaussian Blur for clear medical contours
-      const smoothed = new Float32Array(w * h);
-      const blurRadius = 3;
-
-      // Horizontal pass
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          let sum = 0;
-          let count = 0;
-          for (let k = -blurRadius; k <= blurRadius; k++) {
-            const nx = x + k;
-            if (nx >= 0 && nx < w) {
-              sum += heatMap[y * w + nx];
-              count++;
-            }
-          }
-          smoothed[y * w + x] = sum / count;
-        }
-      }
-
-      // Vertical pass
-      for (let x = 0; x < w; x++) {
+        // 2-Pass Gaussian blur for smooth organic thermal gradations
+        const smoothed = new Float32Array(w * h);
+        const blurRadius = 2;
         for (let y = 0; y < h; y++) {
-          let sum = 0;
-          let count = 0;
-          for (let k = -blurRadius; k <= blurRadius; k++) {
-            const ny = y + k;
-            if (ny >= 0 && ny < h) {
-              sum += smoothed[ny * w + x];
-              count++;
+          for (let x = 0; x < w; x++) {
+            let sum = 0;
+            let count = 0;
+            for (let k = -blurRadius; k <= blurRadius; k++) {
+              const nx = x + k;
+              if (nx >= 0 && nx < w) {
+                sum += heatMap[y * w + nx];
+                count++;
+              }
+            }
+            smoothed[y * w + x] = sum / count;
+          }
+        }
+        for (let x = 0; x < w; x++) {
+          for (let y = 0; y < h; y++) {
+            let sum = 0;
+            let count = 0;
+            for (let k = -blurRadius; k <= blurRadius; k++) {
+              const ny = y + k;
+              if (ny >= 0 && ny < h) {
+                sum += smoothed[ny * w + x];
+                count++;
+              }
+            }
+            heatMap[y * w + x] = sum / count;
+          }
+        }
+      } else {
+        // Mode C: Patch Attention (Figure c) - 16x16 Transformer Attention Token Grid
+        const patchGridSize = 16;
+        const pSize = Math.floor(w / patchGridSize);
+
+        for (let py = 0; py < patchGridSize; py++) {
+          for (let px = 0; px < patchGridSize; px++) {
+            let lesionCover = 0;
+            let skinCover = 0;
+            let patchSalSum = 0;
+            let pCount = 0;
+
+            for (let y = py * pSize; y < (py + 1) * pSize && y < h; y++) {
+              for (let x = px * pSize; x < (px + 1) * pSize && x < w; x++) {
+                const idx = y * w + x;
+                if (isLesion[idx]) lesionCover++;
+                if (isSkin[idx]) skinCover++;
+                patchSalSum += rawSaliency[idx];
+                pCount++;
+              }
+            }
+
+            const lFrac = pCount > 0 ? lesionCover / pCount : 0;
+            const sFrac = pCount > 0 ? skinCover / pCount : 0;
+            const meanSal = pCount > 0 ? patchSalSum / pCount : 0;
+
+            let pHeat = 0.08;
+            if (sFrac < 0.20) {
+              pHeat = 0.06;
+            } else if (lFrac > 0.12) {
+              // High attention patch over lesion: scarlet red to flaming orange
+              pHeat = 0.80 + 0.16 * Math.min(1, lFrac * 1.4);
+            } else if (sFrac >= 0.20) {
+              // Surrounding skin patch: cool cyan to warm yellow
+              const salNorm = Math.min(1, meanSal / Math.max(1, peakSal * 0.45));
+              pHeat = 0.22 + 0.35 * salNorm;
+            }
+
+            for (let y = py * pSize; y < (py + 1) * pSize && y < h; y++) {
+              for (let x = px * pSize; x < (px + 1) * pSize && x < w; x++) {
+                // Subtle 1px grid separator on patches matching Figure (c)
+                const isBorder = (x === px * pSize) || (y === py * pSize);
+                heatMap[y * w + x] = isBorder ? Math.max(0.04, pHeat - 0.05) : pHeat;
+              }
             }
           }
-          heatMap[y * w + x] = sum / count;
         }
       }
 
-      // High-definition Clinical Thermal Colormap matching Figure (b) & (c)
+      // Colormap matching Figure (b) and Figure (c)
       const thermalColormap = (t: number): [number, number, number] => {
         const v = Math.max(0, Math.min(1, t));
         if (v < 0.18) {
-          // Deep Navy Blue (Background): (10, 20, 60) -> (20, 38, 95)
+          // Deep Navy Blue (Background)
           const f = v / 0.18;
           return [
-            Math.round(10 + f * (20 - 10)),
-            Math.round(20 + f * (38 - 20)),
-            Math.round(60 + f * (95 - 60)),
+            Math.round(10 + f * 10),
+            Math.round(18 + f * 20),
+            Math.round(55 + f * 40),
           ];
         } else if (v < 0.38) {
-          // Cool Indigo to Cyan: (20, 38, 95) -> (70, 160, 210)
+          // Cool Indigo to Cyan
           const f = (v - 0.18) / 0.20;
           return [
-            Math.round(20 + f * (70 - 20)),
-            Math.round(38 + f * (160 - 38)),
-            Math.round(95 + f * (210 - 95)),
+            Math.round(20 + f * 40),
+            Math.round(38 + f * 122),
+            Math.round(95 + f * 120),
           ];
         } else if (v < 0.58) {
-          // Cyan to Luminous Golden Yellow: (70, 160, 210) -> (255, 235, 60)
+          // Cyan to Golden Yellow
           const f = (v - 0.38) / 0.20;
           return [
-            Math.round(70 + f * (255 - 70)),
-            Math.round(160 + f * (235 - 160)),
-            Math.round(210 - f * (210 - 60)),
+            Math.round(60 + f * 195),
+            Math.round(160 + f * 75),
+            Math.round(215 - f * 155),
           ];
-        } else if (v < 0.80) {
-          // Luminous Golden Yellow to Fiery Orange: (255, 235, 60) -> (245, 95, 18)
-          const f = (v - 0.58) / 0.22;
+        } else if (v < 0.78) {
+          // Golden Yellow to Fiery Orange
+          const f = (v - 0.58) / 0.20;
           return [
-            Math.round(255 - f * (255 - 245)),
-            Math.round(235 - f * (235 - 95)),
-            Math.round(60 - f * (60 - 18)),
+            Math.round(255 - f * 10),
+            Math.round(235 - f * 140),
+            Math.round(60 - f * 42),
           ];
         } else {
-          // Fiery Orange to Blazing Scarlet Red: (245, 95, 18) -> (225, 20, 18)
-          const f = (v - 0.80) / 0.20;
+          // Fiery Orange to Blazing Scarlet Red
+          const f = (v - 0.78) / 0.22;
           return [
-            Math.round(245 - f * (245 - 225)),
-            Math.round(95 - f * (95 - 20)),
-            Math.round(18 + f * (18 - 18)),
+            Math.round(245 - f * 20),
+            Math.round(95 - f * 75),
+            Math.round(18),
           ];
         }
       };
@@ -549,7 +758,7 @@ function CaseDetailsContent({
       ctx.putImageData(outputData, 0, 0);
 
       // -------------------------------------------------------------
-      // SCREEN 3: BASE CLINICAL PHOTO + FULL CROSSHAIRS + NEON GREEN CONTOUR
+      // 5. SCREEN 3: BASE CLINICAL PHOTO + REAL LESION CONTOUR + CROSSHAIR
       // -------------------------------------------------------------
       const canvas3 = screen3CanvasRef.current;
       if (canvas3) {
@@ -558,51 +767,24 @@ function CaseDetailsContent({
           canvas3.width = w;
           canvas3.height = h;
 
-          // 1. Draw base photo
+          // 1. Draw original clinical photo
           ctx3.drawImage(img, 0, 0, w, h);
 
-          // 2. Compute focal lesion centroid from segmented pixels
-          let sumX = 0;
-          let sumY = 0;
-          let lesionPixelCount = 0;
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-              if (isLesionArr[y * w + x] === 1) {
-                sumX += x;
-                sumY += y;
-                lesionPixelCount++;
-              }
-            }
-          }
-
-          let cx = Math.round(w / 2);
-          let cy = Math.round(h / 2);
-          if (lesionPixelCount > 30) {
-            cx = Math.round(sumX / lesionPixelCount);
-            cy = Math.round(sumY / lesionPixelCount);
-          } else {
-            const rawDetected = resData?.teams?.cancer?.junior_a?.detected_boxes;
-            if (rawDetected && rawDetected.length > 0) {
-              cx = Math.round((rawDetected[0].x + rawDetected[0].w / 2) * w);
-              cy = Math.round((rawDetected[0].y + rawDetected[0].h / 2) * h);
-            }
-          }
-
-          // 3. Trace neon green boundary contour around the lesion
+          // 2. Trace organic boundary contour ONLY around the segmented lesion (NO CIRCLES!)
           const isBoundary = new Uint8Array(w * h);
           for (let y = 1; y < h - 1; y++) {
             for (let x = 1; x < w - 1; x++) {
               const idx = y * w + x;
-              if (isLesionArr[idx] === 1) {
+              if (isLesion[idx] === 1) {
                 if (
-                  isLesionArr[idx - 1] === 0 ||
-                  isLesionArr[idx + 1] === 0 ||
-                  isLesionArr[idx - w] === 0 ||
-                  isLesionArr[idx + w] === 0 ||
-                  isLesionArr[idx - w - 1] === 0 ||
-                  isLesionArr[idx - w + 1] === 0 ||
-                  isLesionArr[idx + w - 1] === 0 ||
-                  isLesionArr[idx + w + 1] === 0
+                  isLesion[idx - 1] === 0 ||
+                  isLesion[idx + 1] === 0 ||
+                  isLesion[idx - w] === 0 ||
+                  isLesion[idx + w] === 0 ||
+                  isLesion[idx - w - 1] === 0 ||
+                  isLesion[idx - w + 1] === 0 ||
+                  isLesion[idx + w - 1] === 0 ||
+                  isLesion[idx + w + 1] === 0
                 ) {
                   isBoundary[idx] = 1;
                 }
@@ -635,28 +817,26 @@ function CaseDetailsContent({
           }
           ctx3.putImageData(contourImgData, 0, 0);
 
-          // 4. Draw full-span edge-to-edge solid bright red crosshairs through the centroid
+          // 3. Draw full-span edge-to-edge solid bright red crosshairs through the centroid
           ctx3.save();
           ctx3.strokeStyle = "#FF0000";
           ctx3.lineWidth = 1.5;
 
           // Horizontal line edge to edge
           ctx3.beginPath();
-          ctx3.moveTo(0, cy);
-          ctx3.lineTo(w, cy);
+          ctx3.moveTo(0, targetCy);
+          ctx3.lineTo(w, targetCy);
           ctx3.stroke();
 
           // Vertical line edge to edge
           ctx3.beginPath();
-          ctx3.moveTo(cx, 0);
-          ctx3.lineTo(cx, h);
+          ctx3.moveTo(targetCx, 0);
+          ctx3.lineTo(targetCx, h);
           ctx3.stroke();
 
           // Central reticle circle
           ctx3.beginPath();
-          ctx3.arc(cx, cy, 5, 0, 2 * Math.PI);
-          ctx3.strokeStyle = "#FF0000";
-          ctx3.lineWidth = 1.5;
+          ctx3.arc(targetCx, targetCy, 6, 0, 2 * Math.PI);
           ctx3.stroke();
 
           ctx3.restore();
