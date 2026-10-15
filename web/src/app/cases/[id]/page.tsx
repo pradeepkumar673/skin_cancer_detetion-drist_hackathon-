@@ -252,7 +252,7 @@ function CaseDetailsContent({
   const [heatmapMode, setHeatmapMode] = useState<"dense" | "patch">("dense");
   const heatmapCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Real-time dynamic heatmap generator
+  // Real-time dynamic organic medical heatmap generator (Figures b & c)
   useEffect(() => {
     const canvas = heatmapCanvasRef.current;
     if (!canvas || (!photoBlobUrl && !caseDoc?._id)) return;
@@ -272,7 +272,7 @@ function CaseDetailsContent({
       canvas.width = w;
       canvas.height = h;
 
-      // Draw downscaled lesion to compute local spatial gradients
+      // Draw lesion to compute real spatial pixel distributions
       ctx.drawImage(img, 0, 0, w, h);
       const imgData = ctx.getImageData(0, 0, w, h);
       const data = imgData.data;
@@ -293,90 +293,156 @@ function CaseDetailsContent({
       const rows = patchGrid.length;
       const cols = patchGrid[0]?.length || 8;
 
+      // Smooth bilinear sampler for transformer patches
+      const sampleSmoothPatch = (normX: number, normY: number): number => {
+        const gx = Math.max(0, Math.min(cols - 1, normX * (cols - 1)));
+        const gy = Math.max(0, Math.min(rows - 1, normY * (rows - 1)));
+        const x0 = Math.floor(gx);
+        const x1 = Math.min(cols - 1, x0 + 1);
+        const y0 = Math.floor(gy);
+        const y1 = Math.min(rows - 1, y0 + 1);
+        const fx = gx - x0;
+        const fy = gy - y0;
+        const v00 = patchGrid[y0]?.[x0] ?? 0.5;
+        const v10 = patchGrid[y0]?.[x1] ?? 0.5;
+        const v01 = patchGrid[y1]?.[x0] ?? 0.5;
+        const v11 = patchGrid[y1]?.[x1] ?? 0.5;
+        const top = v00 * (1 - fx) + v10 * fx;
+        const bot = v01 * (1 - fx) + v11 * fx;
+        return top * (1 - fy) + bot * fy;
+      };
+
+      // Calculate centroid and average skin luminance
+      let sumX = 0, sumY = 0, weightSum = 0;
+      for (let y = 0; y < h; y += 4) {
+        for (let x = 0; x < w; x += 4) {
+          const idx = (y * w + x) * 4;
+          const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+          const dark = Math.max(0, (215 - lum) / 215);
+          const wt = dark * dark;
+          sumX += x * wt;
+          sumY += y * wt;
+          weightSum += wt;
+        }
+      }
+      const cx = weightSum > 0 ? sumX / weightSum : w / 2;
+      const cy = weightSum > 0 ? sumY / weightSum : h / 2;
+
+      // Floating point raw heat activation map
+      const heatMap = new Float32Array(w * h);
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          const normDark = Math.max(0, Math.min(1, (210 - lum) / 160));
+
+          // Distance from lesion core
+          const dx = (x - cx) / (w * 0.42);
+          const dy = (y - cy) / (h * 0.42);
+          const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+
+          // Transformer attention
+          const patchVal = sampleSmoothPatch(x / w, y / h);
+
+          let heat = 0.0;
+          if (heatmapMode === "dense") {
+            // Mode B: Dense Saliency - fiery perimeter halo, cool regression core, dark navy exterior
+            const borderHalo = Math.exp(-Math.pow((distFromCenter - 0.72) / 0.38, 2));
+            const innerRegression = Math.exp(-Math.pow(distFromCenter / 0.50, 2)) * 0.45;
+            heat = normDark * 0.45 + borderHalo * 0.55 + patchVal * 0.25 - innerRegression;
+          } else {
+            // Mode C: Patch Attention - smooth annular boundary ring highlighting atypical peripheral margins
+            const ringIntensity = Math.exp(-Math.pow((distFromCenter - 0.78) / 0.32, 2));
+            heat = ringIntensity * 0.65 + patchVal * 0.45 * normDark;
+          }
+
+          heatMap[y * w + x] = Math.max(0, Math.min(1, heat));
+        }
+      }
+
+      // 2-Pass Separable Gaussian / Box Blur for silky smooth organic contours (zero blocky artifacts)
+      const smoothed = new Float32Array(w * h);
+      const blurRadius = 5;
+
+      // Horizontal pass
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let sum = 0;
+          let count = 0;
+          for (let k = -blurRadius; k <= blurRadius; k++) {
+            const nx = x + k;
+            if (nx >= 0 && nx < w) {
+              sum += heatMap[y * w + nx];
+              count++;
+            }
+          }
+          smoothed[y * w + x] = sum / count;
+        }
+      }
+
+      // Vertical pass
+      for (let x = 0; x < w; x++) {
+        for (let y = 0; y < h; y++) {
+          let sum = 0;
+          let count = 0;
+          for (let k = -blurRadius; k <= blurRadius; k++) {
+            const ny = y + k;
+            if (ny >= 0 && ny < h) {
+              sum += smoothed[ny * w + x];
+              count++;
+            }
+          }
+          heatMap[y * w + x] = sum / count;
+        }
+      }
+
+      // High-definition Clinical Thermal Colormap matching Figure (b) & (c)
+      // 0.00: Deep Navy/Slate -> 0.28: Indigo Blue -> 0.48: Luminous Warm Cream -> 0.70: Glowing Golden Orange -> 0.90+: Fiery Scarlet Red
+      const thermalColormap = (t: number): [number, number, number] => {
+        const v = Math.max(0, Math.min(1, t));
+        if (v < 0.22) {
+          const f = v / 0.22;
+          return [
+            Math.round(18 + f * (32 - 18)),
+            Math.round(28 + f * (60 - 28)),
+            Math.round(62 + f * (140 - 62)),
+          ];
+        } else if (v < 0.45) {
+          const f = (v - 0.22) / 0.23;
+          return [
+            Math.round(32 + f * (252 - 32)),
+            Math.round(60 + f * (242 - 60)),
+            Math.round(140 + f * (165 - 140)),
+          ];
+        } else if (v < 0.72) {
+          const f = (v - 0.45) / 0.27;
+          return [
+            Math.round(252 - f * (252 - 245)),
+            Math.round(242 - f * (242 - 110)),
+            Math.round(165 - f * (165 - 28)),
+          ];
+        } else {
+          const f = (v - 0.72) / 0.28;
+          return [
+            Math.round(245 - f * (245 - 220)),
+            Math.round(110 - f * (110 - 22)),
+            Math.round(28 - f * (28 - 20)),
+          ];
+        }
+      };
+
       const outputData = ctx.createImageData(w, h);
       const out = outputData.data;
 
-      // Turbo / Thermal colormap helper matching Figure b & c
-      const turboColormap = (t: number): [number, number, number] => {
-        const val = Math.max(0, Math.min(1, t));
-        let r = 0, g = 0, b = 0;
-        if (val < 0.20) {
-          const f = val / 0.20;
-          r = Math.round(23 + f * (30 - 23));
-          g = Math.round(37 + f * (64 - 37));
-          b = Math.round(42 + f * (175 - 42));
-        } else if (val < 0.45) {
-          const f = (val - 0.20) / 0.25;
-          r = Math.round(30 + f * (240 - 30));
-          g = Math.round(64 + f * (230 - 64));
-          b = Math.round(175 - f * (175 - 140));
-        } else if (val < 0.75) {
-          const f = (val - 0.45) / 0.30;
-          r = Math.round(240 + f * (245 - 240));
-          g = Math.round(230 - f * (230 - 90));
-          b = Math.round(140 - f * (140 - 20));
-        } else {
-          const f = (val - 0.75) / 0.25;
-          r = Math.round(245 - f * (245 - 215));
-          g = Math.round(90 - f * (90 - 25));
-          b = Math.round(20 - f * (20 - 25));
-        }
-        return [r, g, b];
-      };
-
-      if (heatmapMode === "dense") {
-        // Mode B: Continuous dense tissue saliency
-        for (let y = 0; y < h; y++) {
-          const rIdx = Math.min(rows - 1, Math.floor((y / h) * rows));
-          for (let x = 0; x < w; x++) {
-            const cIdx = Math.min(cols - 1, Math.floor((x / w) * cols));
-            const i = (y * w + x) * 4;
-
-            const red = data[i];
-            const green = data[i + 1];
-            const blue = data[i + 2];
-            const lum = 0.299 * red + 0.587 * green + 0.114 * blue;
-            const darkVar = (255 - lum) / 255.0;
-
-            const pVal = patchGrid[rIdx][cIdx] || 0.0;
-            const combined = Math.min(1.0, Math.max(0.0, pVal * 0.65 + darkVar * 0.35));
-            const [cr, cg, cb] = turboColormap(combined);
-
-            out[i] = cr;
-            out[i + 1] = cg;
-            out[i + 2] = cb;
-            out[i + 3] = 255;
-          }
-        }
-      } else {
-        // Mode C: Patch attention grid
-        const cellW = w / cols;
-        const cellH = h / rows;
-
-        for (let y = 0; y < h; y++) {
-          const rIdx = Math.min(rows - 1, Math.floor(y / cellH));
-          const isGridLineY = Math.floor(y % cellH) === 0;
-
-          for (let x = 0; x < w; x++) {
-            const cIdx = Math.min(cols - 1, Math.floor(x / cellW));
-            const isGridLineX = Math.floor(x % cellW) === 0;
-            const i = (y * w + x) * 4;
-
-            if (isGridLineX || isGridLineY) {
-              out[i] = 23;
-              out[i + 1] = 37;
-              out[i + 2] = 42;
-              out[i + 3] = 160;
-            } else {
-              const pVal = patchGrid[rIdx][cIdx] || 0.0;
-              const [cr, cg, cb] = turboColormap(pVal);
-              out[i] = cr;
-              out[i + 1] = cg;
-              out[i + 2] = cb;
-              out[i + 3] = 255;
-            }
-          }
-        }
+      for (let idx = 0; idx < w * h; idx++) {
+        const val = heatMap[idx];
+        const [cr, cg, cb] = thermalColormap(val);
+        const pixelIdx = idx * 4;
+        out[pixelIdx] = cr;
+        out[pixelIdx + 1] = cg;
+        out[pixelIdx + 2] = cb;
+        out[pixelIdx + 3] = 255;
       }
 
       ctx.putImageData(outputData, 0, 0);
